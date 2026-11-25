@@ -24,7 +24,7 @@ export interface Persona {
 
 export const PERSONAS: Persona[] = [
   {
-    id: 'kid', name: 'Малой Ахмед', emoji: '👶', about: 'Только научился ходить конём. Иногда.', elo: 700, skill: 0, ms: 50,
+    id: 'kid', name: 'Малой', emoji: '👶', about: 'Только научился ходить конём. Иногда.', elo: 700, skill: 0, ms: 50,
     style: 'kid', tolerance: 250,
     phrases: {
       start: ['Я буду белыми! Ой, нет… Ладно, погнали!', 'Мама сказала, ты лох. Проверим!'],
@@ -38,7 +38,7 @@ export const PERSONAS: Persona[] = [
     },
   },
   {
-    id: 'grandpa', name: 'Дед Магомед', emoji: '👴', about: 'Играет осторожно, не любит размены. Ворчит.', elo: 1000, skill: 3, ms: 120,
+    id: 'grandpa', name: 'Дед', emoji: '👴', about: 'Играет осторожно, не любит размены. Ворчит.', elo: 1000, skill: 3, ms: 120,
     style: 'solid', tolerance: 60,
     phrases: {
       start: ['Садись, внучок. Покажу, как в наше время играли.', 'Не торопись. Шахматы — это тебе не тикток.'],
@@ -52,7 +52,7 @@ export const PERSONAS: Persona[] = [
     },
   },
   {
-    id: 'troll', name: 'Тролль Шамиль', emoji: '🤡', about: 'Гуляет королём, двигает крайние пешки и ржёт.', elo: 1200, skill: 6, ms: 150,
+    id: 'troll', name: 'Тролль', emoji: '🤡', about: 'Гуляет королём, двигает крайние пешки и ржёт.', elo: 1200, skill: 6, ms: 150,
     style: 'troll', tolerance: 90,
     phrases: {
       start: ['Сыграю одной левой. Нет, одним королём.', 'Готовься к кринжу, брат.'],
@@ -66,7 +66,7 @@ export const PERSONAS: Persona[] = [
     },
   },
   {
-    id: 'tiger', name: 'Тигр Расул', emoji: '🐯', about: 'Атакует. Любит шахи, взятия и кидаться вперёд.', elo: 1500, skill: 10, ms: 250,
+    id: 'tiger', name: 'Тигр', emoji: '🐯', about: 'Атакует. Любит шахи, взятия и кидаться вперёд.', elo: 1500, skill: 10, ms: 250,
     style: 'aggressive', tolerance: 60,
     phrases: {
       start: ['Сейчас будет мясо, брат.', 'Я иду за твоим королём. Готовься.'],
@@ -80,7 +80,7 @@ export const PERSONAS: Persona[] = [
     },
   },
   {
-    id: 'taxi', name: 'Дядя Саид', emoji: '🧔', about: 'Таксист, 20 лет играет во дворе. Комментирует всё.', elo: 1700, skill: 13, ms: 350,
+    id: 'taxi', name: 'Таксист', emoji: '🧔', about: 'Таксист, 20 лет играет во дворе. Комментирует всё.', elo: 1700, skill: 13, ms: 350,
     style: 'normal', tolerance: 30,
     phrases: {
       start: ['Садись, брат, довезу до мата. Счётчик включён.', 'Я во дворе всех обыгрывал, ты будешь следующим.'],
@@ -94,7 +94,7 @@ export const PERSONAS: Persona[] = [
     },
   },
   {
-    id: 'eagle', name: 'Орёл Хабиб', emoji: '🦅', about: 'Давит без остановки. Сильный и злой.', elo: 2000, skill: 16, ms: 600,
+    id: 'eagle', name: 'Орёл', emoji: '🦅', about: 'Давит без остановки. Сильный и злой.', elo: 2000, skill: 16, ms: 600,
     style: 'aggressive', tolerance: 35,
     phrases: {
       start: ['Отправлю тебя спать, брат.', 'Готовься, сейчас будет давление.'],

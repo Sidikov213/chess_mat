@@ -21,7 +21,7 @@ export interface ClipMoment {
   cls: string;
   /** Пометка на клетке хода: «??», «?», «!» и т. п. */
   mark: string;
-  /** «Я vs 🐯 Тигр Расул». */
+  /** «Я vs 🐯 Тигр». */
   title: string;
   /** Насколько момент яркий — для выбора лучшего клипа партии. */
   drama: number;
