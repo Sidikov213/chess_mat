@@ -21,6 +21,8 @@ export interface Options {
   multipv?: number;
   /** Сила игры 0–20; 20 — полная. */
   skill?: number;
+  /** Шахматы Фишера: рокировка в записи — «король бьёт свою ладью» (e1h1). */
+  chess960?: boolean;
 }
 
 const MATE_CP = 10000;
@@ -68,6 +70,7 @@ export class Engine {
       const sorted = () => [...lines.values()].sort((a, b) => a.multipv - b.multipv);
       this.worker.postMessage(`setoption name MultiPV value ${opts.multipv ?? 1}`);
       this.worker.postMessage(`setoption name Skill Level value ${opts.skill ?? 20}`);
+      this.worker.postMessage(`setoption name UCI_Chess960 value ${opts.chess960 ? 'true' : 'false'}`);
       this.worker.postMessage(`position fen ${fen}`);
       const bestmove = await new Promise<string>((resolve) => {
         this.onLine = (line) => {

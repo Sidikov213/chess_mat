@@ -3,45 +3,228 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chess Coach</title>
+    <title>Chess Coach — шахматы с тренером без цензуры</title>
+    <meta name="description" content="Играй в шахматы против 8 ботов-персонажей. Тренер оценивает каждый ход, хвалит и ругает — голосом. Бесплатно, прямо в браузере." />
+    <meta name="theme-color" content="#1f1e1c" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Chess Coach — шахматы с тренером без цензуры" />
+    <meta property="og:description" content="Зевнул ферзя — тренер тебе всё скажет. 8 ботов-персонажей, разбор партий, клипы для TikTok." />
+    <meta property="og:image" content="og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
   </head>
   <body>
     <header>
       <h1>Chess Coach</h1>
       <nav>
         <button id="tab-play" class="tab active">Игра с ботом</button>
+        <button id="tab-duo" class="tab">Два игрока</button>
         <button id="tab-review" class="tab">Разбор партии</button>
       </nav>
       <span id="engine-status">Stockfish загружается…</span>
+      <button id="open-history" class="hdr-btn">📜 История</button>
+      <button id="open-ach" class="hdr-btn">🏆 Достижения</button>
     </header>
+    <div id="modal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-head"><h2 id="modal-title"></h2><button id="modal-close">✕</button></div>
+        <div id="modal-body" class="modal-body"></div>
+      </div>
+    </div>
 
     <main id="view-play" class="view">
       <div class="board-col">
         <div class="evalbar"><div id="play-bar" class="evalbar-white"></div></div>
-        <div id="play-board" class="board"></div>
+        <div class="board-wrap">
+          <div id="play-board" class="board"></div>
+          <div id="play-promo" class="promo cg-wrap hidden"></div>
+          <div id="play-over" class="over hidden">
+            <div class="over-card">
+              <div id="play-over-title" class="over-title"></div>
+              <div id="play-over-reason" class="over-reason"></div>
+              <div id="play-over-rank" class="over-rank"></div>
+              <div id="play-over-aura" class="over-aura"></div>
+              <div id="play-over-report" class="report"></div>
+              <div id="play-over-rating" class="over-rating"></div>
+              <div class="row">
+                <button id="play-over-new" class="primary">Новая партия</button>
+                <button id="play-over-clip">🎬 Клип лучшего момента</button>
+                <button id="play-over-review">Разобрать партию</button>
+                <button id="play-over-close">Закрыть</button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <aside class="panel">
-        <div class="row">
+        <div class="row settings">
           <label>Играю за
             <select id="play-side"><option value="white">белых</option><option value="black">чёрных</option></select>
           </label>
-          <label>Сила бота
+          <label>Соперник
             <select id="play-level"></select>
           </label>
+          <label>Время
+            <select id="play-time"></select>
+          </label>
+          <label class="check"><input id="play-960" type="checkbox" /> Шахматы 960</label>
           <button id="play-new" class="primary">Новая партия</button>
+        </div>
+        <div id="play-bot" class="bot">
+          <span id="play-bot-emoji" class="bot-emoji"></span>
+          <div class="bot-text">
+            <div><b id="play-bot-name"></b> <span id="play-bot-about" class="muted"></span></div>
+            <div id="play-bot-say" class="bot-say"></div>
+          </div>
+        </div>
+        <div id="play-chat" class="chat">
+          <div class="chat-head"><span id="play-chat-viewers"></span><span id="play-aura" class="aura"></span></div>
+          <div id="play-chat-list" class="chat-list"></div>
+        </div>
+        <div id="play-clocks" class="clocks">
+          <div class="clock" id="play-clock-bot"><span class="who">Бот</span><span class="time"></span></div>
+          <div class="clock" id="play-clock-me"><span class="who">Вы</span><span class="time"></span></div>
         </div>
         <div class="row">
           <button id="play-hint">Подсказка</button>
           <button id="play-threat">Что грозит?</button>
           <button id="play-undo">Ход назад</button>
-          <label class="check"><input id="play-coach" type="checkbox" checked /> Тренер</label>
+          <button id="play-draw">Предложить ничью</button>
+          <button id="play-resign" class="danger">Сдаться</button>
         </div>
+        <div class="row settings">
+          <label class="check"><input id="play-coach" type="checkbox" checked /> Тренер</label>
+          <label>Тренер ругается
+            <select id="play-tone">
+              <option value="hard">18+ без тормозов</option>
+              <option value="medium">Лайт (без жёсткого мата)</option>
+              <option value="soft">Без мата</option>
+              <option value="off">Молчит</option>
+            </select>
+          </label>
+          <label class="check"><input id="play-chat-on" type="checkbox" checked /> Чат</label>
+          <label class="check"><input id="play-voice" type="checkbox" checked /> Голос</label>
+          <label class="check"><input id="play-sounds" type="checkbox" checked /> Звуки</label>
+        </div>
+        <div id="play-record" class="record settings"></div>
         <div id="play-status" class="status"></div>
+        <div id="play-opening" class="opening"></div>
+        <div id="play-streak" class="streak"></div>
         <div id="play-eval" class="evaltext"></div>
         <div id="play-feedback" class="note"></div>
         <div id="play-hint-text" class="note"></div>
         <div id="play-moves" class="moves"></div>
-        <button id="play-review">Разобрать эту партию</button>
+        <div class="row">
+          <button id="play-clip" title="Короткое видео последнего момента с репликой тренера — для TikTok, Reels и Shorts">🎬 Клип момента</button>
+          <button id="play-review">Разобрать эту партию</button>
+        </div>
+      </aside>
+    </main>
+
+    <main id="view-duo" class="view hidden">
+      <div class="board-col">
+        <div class="board-wrap">
+          <div id="duo-board" class="board"></div>
+          <div id="duo-promo" class="promo cg-wrap hidden"></div>
+          <div id="duo-over" class="over hidden">
+            <div class="over-card">
+              <div id="duo-over-title" class="over-title"></div>
+              <div id="duo-over-reason" class="over-reason"></div>
+              <div id="duo-over-aura" class="over-aura"></div>
+              <div class="row">
+                <button id="duo-over-again" class="primary">Новая партия</button>
+                <button id="duo-over-review">Разобрать партию</button>
+                <button id="duo-over-close">Закрыть</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside class="panel">
+        <div class="row">
+          <label>Режим
+            <select id="duo-mode">
+              <option value="local">За одним компьютером</option>
+              <option value="net">По сети</option>
+            </select>
+          </label>
+          <label>Время
+            <select id="duo-time"></select>
+          </label>
+        </div>
+        <div class="row">
+          <label class="check"><input id="duo-960" type="checkbox" /> Шахматы 960 (случайная расстановка)</label>
+        </div>
+        <div id="duo-local" class="row">
+          <label class="check"><input id="duo-autoflip" type="checkbox" checked /> Поворачивать доску к тому, кто ходит</label>
+          <button id="duo-new" class="primary">Новая партия</button>
+        </div>
+        <div id="duo-net" class="netbox hidden">
+          <div class="row">
+            <label>Ваше имя <input id="duo-name" type="text" maxlength="20" placeholder="Игрок" /></label>
+            <label>Играю за
+              <select id="duo-color">
+                <option value="random">случайно</option>
+                <option value="white">белых</option>
+                <option value="black">чёрных</option>
+              </select>
+            </label>
+          </div>
+          <div class="row">
+            <button id="duo-host" class="primary">Создать игру</button>
+            <span class="muted">или</span>
+            <input id="duo-addr" type="text" placeholder="Код друга, например 192.168.1.5" />
+            <button id="duo-join">Подключиться</button>
+          </div>
+          <div id="duo-code" class="code hidden"></div>
+          <div class="row">
+            <span id="duo-net-status" class="net-status"></span>
+            <button id="duo-leave" class="hidden">Отключиться</button>
+          </div>
+        </div>
+        <div id="duo-chat" class="chat">
+          <div class="chat-head"><span id="duo-chat-viewers"></span><span id="duo-aura" class="aura"></span></div>
+          <div id="duo-chat-list" class="chat-list"></div>
+        </div>
+        <div id="duo-clocks" class="clocks">
+          <div class="clock" id="duo-clock-white"><span class="who">Белые</span><span class="time"></span></div>
+          <div class="clock" id="duo-clock-black"><span class="who">Чёрные</span><span class="time"></span></div>
+        </div>
+        <div class="row">
+          <button id="duo-undo">Ход назад</button>
+          <button id="duo-draw">Ничья</button>
+          <button id="duo-resign" class="danger">Сдаться</button>
+          <button id="duo-flip">Перевернуть</button>
+        </div>
+        <div class="row settings">
+          <label class="check"><input id="duo-coach" type="checkbox" checked /> Комментатор</label>
+          <label>Ругается
+            <select id="duo-tone">
+              <option value="hard">18+ без тормозов</option>
+              <option value="medium">Лайт (без жёсткого мата)</option>
+              <option value="soft">Без мата</option>
+              <option value="off">Молчит</option>
+            </select>
+          </label>
+          <label class="check"><input id="duo-chat-on" type="checkbox" checked /> Чат</label>
+          <label class="check"><input id="duo-voice" type="checkbox" checked /> Голос</label>
+          <label class="check"><input id="duo-sounds" type="checkbox" checked /> Звуки</label>
+        </div>
+        <div id="duo-offer" class="offer hidden">
+          <span id="duo-offer-text"></span>
+          <button id="duo-offer-yes" class="primary">Принять</button>
+          <button id="duo-offer-no">Отклонить</button>
+        </div>
+        <div id="duo-status" class="status"></div>
+        <div id="duo-opening" class="opening"></div>
+        <div id="duo-feedback" class="note"></div>
+        <div id="duo-moves" class="moves"></div>
+        <div class="row">
+          <button id="duo-clip" title="Короткое видео последнего момента с репликой комментатора — для TikTok, Reels и Shorts">🎬 Клип момента</button>
+          <button id="duo-review">Разобрать эту партию</button>
+        </div>
       </aside>
     </main>
 
@@ -61,6 +244,7 @@
         </div>
         <div id="review-progress" class="hidden"><div class="progress"><div id="review-progress-bar"></div></div><span id="review-progress-text"></span></div>
         <div id="review-result" class="hidden">
+          <div id="review-opening" class="opening"></div>
           <div id="review-summary" class="summary"></div>
           <svg id="review-graph" class="graph" viewBox="0 0 400 80" preserveAspectRatio="none"></svg>
           <div class="row">

@@ -6,9 +6,10 @@ import { parsePgn, startingPosition } from 'chessops/pgn';
 import { makeSan, parseSan } from 'chessops/san';
 import type { Engine, Line } from './engine';
 import {
-  $, GRADE_LABEL, GRADE_MARK, boardState, fenOf, fmtEval, grade, posFromFen, sanLine, sanOf, terminalLine,
+  $, GRADE_LABEL, GRADE_MARK, boardState, cpLossFor, fenOf, gameAccuracy, moveAccuracy, fmtEval, grade, posFromFen, sanLine, sanOf, terminalLine,
   uciOf, userMove, winPct, winPctFor, type Grade, type Side,
 } from './shared';
+import { openingName } from './openings';
 
 const DEPTH = 12;
 const SVG = 'http://www.w3.org/2000/svg';
@@ -21,6 +22,7 @@ interface Ply {
   num: number;
   grade: Grade;
   loss: number;
+  cpLoss: number;
 }
 
 export function initReview(engine: Engine): { load(pgn: string): void } {
@@ -29,6 +31,7 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
   let current = 0;
   let orientation: Side = 'white';
   let run = 0;
+  let is960 = false;
   let training: { list: number[]; at: number; solved: boolean } | null = null;
 
   const cg = Chessground($('review-board'), {
@@ -58,6 +61,7 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
       err.textContent = 'Не удалось прочитать партию. Нужен текст в формате PGN.';
       return;
     }
+    is960 = /960|fischer/i.test(game.headers.get('Variant') ?? '');
     const pos = start.unwrap();
     const parsed: Ply[] = [];
     for (const node of game.moves.mainline()) {
@@ -67,8 +71,8 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
         return;
       }
       parsed.push({
-        fen: fenOf(pos), uci: uciOf(pos, move), san: makeSan(pos, move), side: pos.turn, num: pos.fullmoves,
-        grade: 'good', loss: 0,
+        fen: fenOf(pos), uci: uciOf(pos, move, is960), san: makeSan(pos, move), side: pos.turn, num: pos.fullmoves,
+        grade: 'good', loss: 0, cpLoss: 0,
       });
       pos.play(move);
     }
@@ -86,7 +90,7 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
       $('review-progress-bar').style.width = `${(i / fens.length) * 100}%`;
       $('review-progress-text').textContent = `Разбираю позицию ${i + 1} из ${fens.length}…`;
       const end = terminalLine(posFromFen(fens[i]));
-      const res = end ? [end] : (await engine.analyse(fens[i], { depth: DEPTH, multipv: 2 }))?.lines;
+      const res = end ? [end] : (await engine.analyse(fens[i], { depth: DEPTH, multipv: 2, chess960: is960 }))?.lines;
       if (id !== run) return;
       if (!res?.length) {
         stage('input');
@@ -98,11 +102,14 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
     parsed.forEach((p, i) => {
       const before = found[i][0];
       p.loss = Math.max(0, winPctFor(before.cp, p.side) - winPctFor(found[i + 1][0].cp, p.side));
-      p.grade = grade(p.loss, before.pv[0] === p.uci);
+      p.cpLoss = cpLossFor(before.cp, found[i + 1][0].cp, p.side);
+      p.grade = grade(p.loss, before.pv[0] === p.uci, p.cpLoss);
     });
     plies = parsed;
     lines = found;
     stage('result');
+    const op = is960 ? 'Шахматы 960' : openingName(plies.map((p) => p.san));
+    $('review-opening').textContent = op ? `📖 ${op}` : '';
     renderSummary();
     renderGraph();
     const firstBad = plies.findIndex((p) => p.grade === 'blunder' || p.grade === 'mistake');
@@ -121,11 +128,10 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
     ['', 'Точность', 'Неточности', 'Ошибки', 'Зевки'].forEach((h) => cell(h, 'head'));
     for (const side of ['white', 'black'] as const) {
       const mine = plies.filter((p) => p.side === side);
-      // Точность хода по потере шансов — формула Lichess.
-      const acc = mine.reduce((sum, p) => sum + Math.min(100, Math.max(0, 103.1668 * Math.exp(-0.04354 * p.loss) - 3.1669)), 0);
+      const acc = gameAccuracy(mine.map((p) => moveAccuracy(p.loss, p.cpLoss)));
       const count = (g: Grade) => String(mine.filter((p) => p.grade === g).length);
       cell(side === 'white' ? 'Белые' : 'Чёрные');
-      cell(mine.length ? `${Math.round(acc / mine.length)}%` : '—');
+      cell(acc === null ? '—' : `${Math.round(acc)}%`);
       cell(count('inaccuracy'), 'mv inaccuracy');
       cell(count('mistake'), 'mv mistake');
       cell(count('blunder'), 'mv blunder');
@@ -198,7 +204,7 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
     const before = lines[current][0];
     const after = lines[current + 1][0];
     const best = before.pv[0];
-    cg.set({ ...boardState(posFromFen(p.fen), null), orientation });
+    cg.set({ ...boardState(posFromFen(p.fen), null, undefined, is960), orientation });
     cg.setAutoShapes(best && best !== p.uci ? [arrow(p.uci, 'red'), arrow(best, 'green')] : [arrow(p.uci, 'green')]);
     setBar(after);
     const title = `${p.num}${p.side === 'white' ? '.' : '…'} ${p.san}${GRADE_MARK[p.grade]}`;
@@ -230,7 +236,7 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
     const p = plies[training.list[training.at]];
     training.solved = false;
     current = training.list[training.at];
-    cg.set({ ...boardState(posFromFen(p.fen), p.side), orientation });
+    cg.set({ ...boardState(posFromFen(p.fen), p.side, undefined, is960), orientation });
     cg.setAutoShapes([]);
     setBar(lines[current][0]);
     $('review-note').textContent = `Задача ${training.at + 1} из ${training.list.length}. Ход ${p.num}: в партии здесь была ошибка. Найдите ход сильнее.`;
@@ -243,18 +249,18 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
     const p = plies[i];
     const pos = posFromFen(p.fen);
     const move = userMove(pos, orig, dest);
-    const uci = move && uciOf(pos, move);
+    const uci = move && uciOf(pos, move, is960);
     const top = lines[i][0];
     const match = lines[i].find((l) => l.pv[0] === uci && winPctFor(top.cp, p.side) - winPctFor(l.cp, p.side) < 5);
     const note = $('review-note');
     if (match && uci) {
       training.solved = true;
       pos.play(move);
-      cg.set(boardState(pos, null, uci));
+      cg.set(boardState(pos, null, uci, is960));
       note.innerHTML = `<b class="best">Верно: ${sanOf(p.fen, uci)}.</b> Продолжение: ${sanLine(p.fen, match.pv)}.`;
       return;
     }
-    cg.set(boardState(posFromFen(p.fen), p.side));
+    cg.set(boardState(posFromFen(p.fen), p.side, undefined, is960));
     note.textContent = uci === p.uci
       ? `${p.san} — это ход из партии, он и был ошибкой. Попробуйте другой.`
       : 'Это не лучший ход. Попробуйте ещё или нажмите «Показать ответ».';
@@ -266,7 +272,7 @@ export function initReview(engine: Engine): { load(pgn: string): void } {
     const p = plies[i];
     const top = lines[i][0];
     training.solved = true;
-    cg.set(boardState(posFromFen(p.fen), null));
+    cg.set(boardState(posFromFen(p.fen), null, undefined, is960));
     cg.setAutoShapes([arrow(top.pv[0], 'green')]);
     $('review-note').textContent = `Ответ: ${sanOf(p.fen, top.pv[0])}. Продолжение: ${sanLine(p.fen, top.pv)}.`;
   }
