@@ -2,6 +2,7 @@
 // soft — без мата (можно показывать всем), medium — «лайт» (капец, блин, звездец),
 // hard — добавка к основному набору 18+ из roast.ts.
 import type { RoastKey } from './roast';
+import { CHAT_2026, DONATIONS_2026, HARD_2026, MEDIUM_2026, NICKS_2026, SOFT_2026 } from './memes2026';
 
 export type Tone = 'soft' | 'medium' | 'hard';
 
@@ -244,11 +245,26 @@ export const DONATIONS: Record<'bad' | 'good', string[]> = {
   good: ['за этот ход!', 'красава, держи', 'на корм льву 🦁', 'за сигма-ход', 'это база, держи'],
 };
 
+// Свежие мемы 2025–2026 (memes2026.ts) — к тем же наборам.
+function addLines(to: Lines, from: Lines): void {
+  for (const [k, v] of Object.entries(from) as [RoastKey, string[]][]) (to[k] ??= []).push(...v);
+}
+addLines(SOFT, SOFT_2026);
+addLines(MEDIUM, MEDIUM_2026);
+addLines(HARD, HARD_2026);
+NICKS.push(...NICKS_2026);
+for (const [k, v] of Object.entries(CHAT_2026)) CHAT[k as ChatEvent]?.push(...v);
+DONATIONS.bad.push(...DONATIONS_2026.bad);
+DONATIONS.good.push(...DONATIONS_2026.good);
+
 /** Звание по ауре за партию. */
 export function auraRank(aura: number): string {
+  if (aura >= 8000) return '🐯 Могнул всех';
   if (aura >= 4000) return '🗿 Сигма';
   if (aura >= 1500) return '😎 Чил-гай';
   if (aura >= -500) return '🧍 НПС';
-  if (aura >= -3000) return '🍺 Скуф';
-  return '🤡 Клоун дня';
+  if (aura >= -2000) return '💨 Воздухан';
+  if (aura >= -4000) return '🍺 Скуф';
+  if (aura >= -7000) return '🤡 Клоун дня';
+  return '💤 Китайский пупс';
 }
