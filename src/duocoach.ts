@@ -61,7 +61,7 @@ export class DuoCoach {
   private voiceOn = $<HTMLInputElement>('duo-voice');
 
   constructor(private wrap: HTMLElement, private view: DuoView, private onMoments: () => void) {
-    this.chat = new StreamChat($('duo-chat-list'), $('duo-chat-viewers'));
+    this.chat = new StreamChat($('duo-chat-list'), $('duo-chat-viewers'), () => this.voiceOn.checked);
     try {
       this.toneSel.value = localStorage.getItem('chesscoach.tone') ?? 'hard';
       this.chatOn.checked = localStorage.getItem('chesscoach.chat') !== 'off';

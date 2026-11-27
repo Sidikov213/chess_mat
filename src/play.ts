@@ -12,7 +12,7 @@ import {
   repetitionKey, sanLine, sanOf, terminalLine, uciOf, userMove, winPct, winPctFor, type PromotionRole, type Side,
 } from './shared';
 import { pickRoast, type RoastKey } from './roast';
-import { say } from './voice';
+import { say, sayBot } from './voice';
 import { playSound, setSoundsEnabled } from './sounds';
 import { auraPopup, fmtAura, lions, shake, sigma, wasted, zoomPunch } from './fx';
 import { StreamChat, type ChatLine } from './chat';
@@ -114,7 +114,7 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
   const coach = $<HTMLInputElement>('play-coach');
   const sounds = $<HTMLInputElement>('play-sounds');
   const bar = $('play-bar');
-  const chat = new StreamChat($('play-chat-list'), $('play-chat-viewers'));
+  const chat = new StreamChat($('play-chat-list'), $('play-chat-viewers'), () => $<HTMLInputElement>('play-voice').checked);
   const chatOn = $<HTMLInputElement>('play-chat-on');
   const toneSel = $<HTMLSelectElement>('play-tone');
   try {
@@ -353,7 +353,9 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
   function botSay(ev: BotEvent, chance = 1): void {
     if (Math.random() > chance) return;
     const el = $('play-bot-say');
-    el.textContent = `«${pickPhrase(persona(), ev)}»`;
+    const text = pickPhrase(persona(), ev);
+    el.textContent = `«${text}»`;
+    if ($<HTMLInputElement>('play-voice').checked) sayBot(persona().id, text);
     el.classList.remove('pop');
     void el.offsetWidth;
     el.classList.add('pop');

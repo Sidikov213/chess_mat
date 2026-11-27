@@ -2,6 +2,7 @@
 // Всё выдумано и считается на месте — это шоу, а не настоящие люди.
 import { CHAT, DONATIONS, NICKS, type ChatEvent } from './memes';
 import { playSound } from './sounds';
+import { sayChat, sayDonation } from './voice';
 
 export type ChatLine = [nick: string, text: string];
 
@@ -25,7 +26,8 @@ export class StreamChat {
   private viewers = 0;
   private enabled = true;
 
-  constructor(private list: HTMLElement, private counter: HTMLElement) {
+  /** voice — включена ли озвучка (тогда донаты и часть сообщений читаются вслух). */
+  constructor(private list: HTMLElement, private counter: HTMLElement, private voice: () => boolean = () => false) {
     this.reset();
   }
 
@@ -78,6 +80,7 @@ export class StreamChat {
       if (t !== this.token) return;
       this.add(line, true);
       playSound('donate');
+      if (this.voice()) sayDonation(line[1]);
     }, rnd(900, 1600));
     return line;
   }
@@ -92,6 +95,7 @@ export class StreamChat {
     this.list.append(el);
     while (this.list.children.length > 40) this.list.firstElementChild!.remove();
     this.list.scrollTop = this.list.scrollHeight;
+    if (!donation && this.voice() && Math.random() < 0.35) sayChat(text);
   }
 
   private drawViewers(): void {
