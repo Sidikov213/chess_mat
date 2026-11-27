@@ -276,7 +276,7 @@ export function pickRoast(g: RoastKey, tone: Tone = 'hard', skip?: RegExp): stri
   const kept = skip ? full.filter((p) => !skip.test(p)) : full;
   const all = kept.length ? kept : full;
   const recorded = all.filter((p) => VOICE[p]);
-  // Неозвученные фразы в приложении скажет Pavel; в браузере его нет — там чаще берём записанные голосом Justus.
+  // Неозвученные фразы (новые, ещё без записи) в приложении скажет Pavel; в браузере — чаще берём записанные.
   const share = window.coachVoice ? 0.4 : 0.75;
   const list = recorded.length && Math.random() < share ? recorded : all.length ? all : ROAST[g];
   let p = list[Math.floor(Math.random() * list.length)];
