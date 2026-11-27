@@ -51,13 +51,25 @@ function visitorId(): string {
 const VISITOR = ENABLED ? visitorId() : '';
 const SESSION = ENABLED ? uuid() : '';
 
-function send(table: string, row: Record<string, unknown>): Promise<Response> {
-  return fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+/** keepalive не даёт потерять запрос при закрытии вкладки, но в части браузеров (Safari) такие запросы
+ *  с заголовками могут не уходить — тогда повторяем обычным запросом. Один раз не вышло — дальше без него. */
+let keepaliveOk = true;
+
+async function send(table: string, row: Record<string, unknown>): Promise<Response> {
+  const init: RequestInit = {
     method: 'POST',
     headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
     body: JSON.stringify(row),
-    keepalive: true,
-  });
+  };
+  const url = `${SUPABASE_URL}/rest/v1/${table}`;
+  if (keepaliveOk) {
+    try {
+      return await fetch(url, { ...init, keepalive: true });
+    } catch {
+      keepaliveOk = false;
+    }
+  }
+  return fetch(url, init);
 }
 
 /** Отправка «выстрелил и забыл». optional — поля, без которых строку можно повторить, если база их не знает. */
