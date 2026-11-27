@@ -27,19 +27,86 @@ export interface Options {
 
 const MATE_CP = 10000;
 
+const WASM_ENGINE = 'engine/wasm-worker.js#stockfish-19-lite-single.wasm';
+/** Без WebAssembly: медленнее в несколько раз, зато работает в любом браузере. */
+const ASM_ENGINE = 'engine/stockfish-19-asm.js';
+/** Сколько ждём ответа wasm-движка, прежде чем перейти на запасной (wasm 1,8 МБ на медленном интернете). */
+const WASM_TIMEOUT_MS = 25_000;
+
+/** Умеет ли браузер WebAssembly с SIMD — без него wasm-сборка Stockfish не запустится. */
+function wasmSimdSupported(): boolean {
+  try {
+    // (func (result v128) i32.const 0 i8x16.splat i8x16.popcnt)
+    return typeof WebAssembly === 'object' && WebAssembly.validate(new Uint8Array([
+      0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11,
+    ]));
+  } catch {
+    return false;
+  }
+}
+
+function forcedAsm(): boolean {
+  try {
+    return new URLSearchParams(location.search).get('engine') === 'asm' || localStorage.getItem('chesscoach.engine') === 'asm';
+  } catch {
+    return false;
+  }
+}
+
 export class Engine {
-  private worker: Worker;
+  private worker!: Worker;
   private ready: Promise<void>;
   private queue: Promise<unknown> = Promise.resolve();
   private onLine: ((line: string) => void) | null = null;
   private generation = 0;
+  /** Какая сборка работает: wasm — обычная, asm — запасная без WebAssembly. */
+  kind: 'wasm' | 'asm' = 'wasm';
 
   constructor() {
-    this.worker = new Worker(new URL('engine/stockfish-19-lite-single.js', document.baseURI));
+    this.ready = this.boot();
+  }
+
+  private spawn(path: string, onFail: () => void): void {
+    this.worker?.terminate();
+    this.worker = new Worker(new URL(path, document.baseURI));
     this.worker.onmessage = (ev) => {
-      if (typeof ev.data === 'string') this.onLine?.(ev.data);
+      if (typeof ev.data !== 'string') return;
+      // Движок не смог запуститься (нет нужных возможностей WebAssembly, не хватило памяти).
+      if (/^(Aborted\(|RuntimeError|CompileError|LinkError)|both async and sync fetching of the wasm failed/.test(ev.data)) onFail();
+      this.onLine?.(ev.data);
     };
-    this.ready = this.command('uci', 'uciok').then(() => this.command('isready', 'readyok'));
+    this.worker.onerror = (e) => {
+      e.preventDefault();
+      onFail();
+    };
+  }
+
+  private async boot(): Promise<void> {
+    if (wasmSimdSupported() && !forcedAsm()) {
+      const ok = await new Promise<boolean>((resolve) => {
+        let done = false;
+        const finish = (v: boolean) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          resolve(v);
+        };
+        const timer = setTimeout(() => finish(false), WASM_TIMEOUT_MS);
+        this.spawn(WASM_ENGINE, () => finish(false));
+        this.handshake().then(() => finish(true));
+      });
+      if (ok) return;
+      console.warn('Stockfish wasm не запустился — переключаюсь на запасную сборку без WebAssembly');
+    }
+    this.kind = 'asm';
+    this.onLine = null;
+    this.spawn(ASM_ENGINE, () => undefined);
+    await this.handshake();
+  }
+
+  private async handshake(): Promise<void> {
+    await this.command('uci', 'uciok');
+    await this.command('isready', 'readyok');
   }
 
   private command(cmd: string, waitFor: string): Promise<void> {
@@ -52,6 +119,11 @@ export class Engine {
       };
       this.worker.postMessage(cmd);
     });
+  }
+
+  /** Движок готов к работе (после возможного перехода на запасную сборку). */
+  whenReady(): Promise<void> {
+    return this.ready;
   }
 
   /** Отменяет текущий и все ожидающие расчёты: их промисы вернут null. */

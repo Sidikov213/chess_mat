@@ -17,7 +17,9 @@ trackVisit();
 const engine = new Engine();
 engine
   .analyse('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', { depth: 1 })
-  .then(() => ($('engine-status').textContent = 'Stockfish 19 готов'));
+  .then(() => {
+    $('engine-status').textContent = engine.kind === 'asm' ? 'Stockfish 19 готов (упрощённый режим)' : 'Stockfish 19 готов';
+  });
 
 const TABS = ['play', 'duo', 'review'] as const;
 type Tab = (typeof TABS)[number];
