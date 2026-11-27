@@ -13,7 +13,7 @@ create table if not exists public.cc_events (
   ts         timestamptz not null default now(),
   visitor_id uuid not null,
   session_id uuid not null,
-  kind       text not null check (kind in ('visit', 'game_start', 'clip')),
+  kind       text not null check (kind in ('visit', 'game_start', 'clip', 'name')),
   game_id    uuid,
   data       jsonb not null default '{}'::jsonb check (octet_length(data::text) <= 2000)
 );
@@ -41,8 +41,10 @@ create table if not exists public.cc_games (
   blunders     int  check (blunders between 0 and 1000),
   mistakes     int  check (mistakes between 0 and 1000),
   inaccuracies int  check (inaccuracies between 0 and 1000),
-  duration_s   int  check (duration_s between 0 and 864000)
+  duration_s   int  check (duration_s between 0 and 864000),
+  player_name  text check (char_length(player_name) <= 40)
 );
+create index if not exists cc_games_visitor on public.cc_games (visitor_id, ts);
 create index if not exists cc_games_ts on public.cc_games (ts);
 
 create table if not exists public.cc_admins (
@@ -61,7 +63,7 @@ $$;
 revoke all on public.cc_events, public.cc_games, public.cc_admins from anon, authenticated, public;
 grant insert (visitor_id, session_id, kind, game_id, data) on public.cc_events to anon, authenticated;
 grant insert (id, visitor_id, mode, bot_id, bot_name, bot_elo, color, time_control, chess960, result,
-              how, reason, opening, plies, accuracy, blunders, mistakes, inaccuracies, duration_s)
+              how, reason, opening, plies, accuracy, blunders, mistakes, inaccuracies, duration_s, player_name)
   on public.cc_games to anon, authenticated;
 grant select on public.cc_events, public.cc_games to authenticated;
 
@@ -145,6 +147,24 @@ begin
     from cc_events where kind = 'visit' and ts >= today - interval '29 days'
     group by 1 order by 2 desc limit 15
   ),
+  names as (
+    select distinct on (visitor_id) visitor_id, data->>'name' as name
+    from cc_events where data->>'name' is not null and data->>'name' <> ''
+    order by visitor_id, ts desc
+  ),
+  players as (
+    select v.visitor_id,
+           n.name,
+           min(v.ts) as first_ts,
+           max(v.ts) as last_ts,
+           (select count(*) from cc_games g where g.visitor_id = v.visitor_id) as games,
+           (select count(*) from cc_games g where g.visitor_id = v.visitor_id and g.result = 'win') as wins,
+           (select count(*) from cc_games g where g.visitor_id = v.visitor_id and g.mode = 'bot') as bot_games
+    from cc_events v left join names n using (visitor_id)
+    group by v.visitor_id, n.name
+    order by max(v.ts) desc
+    limit 100
+  ),
   devices as (
     select coalesce(data->>'device', '?') as device, count(distinct visitor_id) as visitors
     from cc_events where kind = 'visit' and ts >= today - interval '29 days'
@@ -161,7 +181,8 @@ begin
     'modes',   (select coalesce(jsonb_object_agg(mode, n), '{}') from
                  (select mode, count(*) n from cc_games group by mode) m),
     'sources', (select coalesce(jsonb_agg(to_jsonb(sources)), '[]') from sources),
-    'devices', (select coalesce(jsonb_agg(to_jsonb(devices)), '[]') from devices)
+    'devices', (select coalesce(jsonb_agg(to_jsonb(devices)), '[]') from devices),
+    'players', (select coalesce(jsonb_agg(to_jsonb(players) order by last_ts desc), '[]') from players)
   ) into r;
   return r;
 end $$;

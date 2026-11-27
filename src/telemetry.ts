@@ -51,18 +51,60 @@ function visitorId(): string {
 const VISITOR = ENABLED ? visitorId() : '';
 const SESSION = ENABLED ? uuid() : '';
 
-function post(table: string, row: Record<string, unknown>): void {
-  if (!ENABLED) return;
-  void fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+function send(table: string, row: Record<string, unknown>): Promise<Response> {
+  return fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: 'POST',
     headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
     body: JSON.stringify(row),
     keepalive: true,
-  }).catch(() => undefined);
+  });
 }
 
-function event(kind: 'visit' | 'game_start' | 'clip', data: Record<string, unknown>, gameId?: string): void {
-  post('cc_events', { visitor_id: VISITOR, session_id: SESSION, kind, game_id: gameId ?? null, data });
+/** Отправка «выстрелил и забыл». optional — поля, без которых строку можно повторить, если база их не знает. */
+function post(table: string, row: Record<string, unknown>, optional: string[] = []): void {
+  if (!ENABLED) return;
+  void send(table, row)
+    .then((res) => {
+      if (res.ok || res.status >= 500 || !optional.some((k) => k in row)) return;
+      const rest = { ...row };
+      for (const k of optional) delete rest[k];
+      return send(table, rest);
+    })
+    .catch(() => undefined);
+}
+
+function event(kind: 'visit' | 'game_start' | 'clip' | 'name', data: Record<string, unknown>, gameId?: string): void {
+  const name = playerName();
+  post('cc_events', { visitor_id: VISITOR, session_id: SESSION, kind, game_id: gameId ?? null, data: name ? { name, ...data } : data });
+}
+
+// ---------- имя игрока ----------
+
+const NAME_KEY = 'chesscoach.name';
+export const NAME_MAX = 24;
+
+/** Сайт со статистикой (а не приложение и не разработка) — только тогда спрашиваем имя. */
+export const telemetryEnabled = (): boolean => ENABLED;
+
+export function playerName(): string {
+  return safeGet(NAME_KEY) ?? '';
+}
+
+/** Чистит ввод: без управляющих символов и лишних пробелов, не длиннее NAME_MAX. */
+export function cleanName(raw: string): string {
+  return raw.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2066-\u2069]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
+}
+
+export function setPlayerName(raw: string): string {
+  const name = cleanName(raw);
+  if (!name || name === playerName()) return name;
+  try {
+    localStorage.setItem(NAME_KEY, name);
+  } catch {
+    /* не сохранилось — спросим в следующий раз */
+  }
+  event('name', {});
+  return name;
 }
 
 /** Откуда пришёл: utm_source из ссылки, иначе сайт-источник. */
@@ -143,13 +185,14 @@ export class TrackedGame {
     post('cc_games', {
       id: this.id,
       visitor_id: VISITOR,
+      player_name: playerName() || null,
       ...this.info,
       ...r,
       reason: r.reason.slice(0, 120),
       opening: r.opening?.slice(0, 120) ?? null,
       accuracy: r.accuracy == null ? null : Math.round(r.accuracy),
       duration_s: Math.round((Date.now() - this.startedAt) / 1000),
-    });
+    }, ['player_name']);
   }
 }
 

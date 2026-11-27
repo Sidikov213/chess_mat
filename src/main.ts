@@ -10,6 +10,7 @@ import { $ } from './shared';
 import { renderAchievements } from './achievements';
 import { deleteGame, loadHistory } from './history';
 import { trackVisit } from './telemetry';
+import { initName } from './name';
 
 trackVisit();
 
@@ -43,6 +44,7 @@ if (import.meta.env.PROD && location.protocol.startsWith('http') && 'serviceWork
   void navigator.serviceWorker.register('sw.js').catch(() => undefined);
 }
 initDuo(openReview);
+initName();
 
 for (const t of TABS) $(`tab-${t}`).onclick = () => show(t);
 

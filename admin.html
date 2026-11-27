@@ -60,6 +60,15 @@
         <div class="chart-tip" id="chart-tip"></div>
       </section>
 
+      <section class="card hidden" id="players-card">
+        <div class="card-head">
+          <h2>Игроки</h2>
+          <span id="players-count" class="muted small-t"></span>
+        </div>
+        <div id="players" class="players"></div>
+        <button id="players-more" class="more hidden">Показать всех</button>
+      </section>
+
       <section class="card">
         <div class="card-head">
           <h2>Боты</h2>
@@ -99,7 +108,7 @@
           </select>
           <select id="f-bot"><option value="">Все боты</option></select>
           <div class="player-filter">
-            <input id="f-player" placeholder="Номер игрока" autocomplete="off" />
+            <input id="f-player" placeholder="Имя или номер игрока" autocomplete="off" />
             <button id="f-player-clear" class="clear hidden" aria-label="Сбросить">×</button>
           </div>
         </div>
@@ -110,7 +119,7 @@
           <button id="next">Старее →</button>
         </div>
       </section>
-      <p class="foot">Игрок — анонимный номер из браузера, нажмите на него, чтобы увидеть все его партии. Брошенные — начатые, но не доигранные (закрыли вкладку, начали новую). Время московское.</p>
+      <p class="foot">Игрок — имя, которое он ввёл на сайте, или анонимный номер браузера, если не ввёл. Нажмите на игрока, чтобы увидеть все его партии. Брошенные — начатые, но не доигранные (закрыли вкладку, начали новую). Время московское.</p>
     </main>
     <script type="module" src="/src/admin.ts"></script>
   </body>

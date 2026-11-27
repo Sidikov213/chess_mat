@@ -138,6 +138,7 @@ interface Summary {
   modes: Record<string, number>;
   sources: { source: string; visits: number }[];
   devices: { device: string; visitors: number }[];
+  players?: { visitor_id: string; name: string | null; first_ts: string; last_ts: string; games: number; wins: number; bot_games: number }[];
 }
 
 const BOT_EMOJI: Record<string, string> = { kid: '👶', grandpa: '👴', troll: '🤡', tiger: '🐯', taxi: '🧔', eagle: '🦅', prof: '🧠', machine: '🤖' };
@@ -268,11 +269,57 @@ function hbars(id: string, rows: [string, number][], unit: [string, string, stri
   box.title = unit[2];
 }
 
+const AV_COLORS = ['#338ced', '#e76624', '#00a888', '#d28e05', '#e24d8b', '#0aac23', '#9887ef', '#eb6263'];
+function avColor(id: string): string {
+  return AV_COLORS[parseInt(id.slice(0, 2), 16) % AV_COLORS.length];
+}
+
+function ago(ts: string): string {
+  const min = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+  if (min < 2) return 'только что';
+  if (min < 60) return `${min} мин назад`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `${h} ч назад`;
+  return new Date(ts).toLocaleDateString('ru-RU', { timeZone: TZ, day: 'numeric', month: 'short' }).replace('.', '');
+}
+
+let playersAll = false;
+
+function renderPlayers(): void {
+  const list = summary?.players;
+  $('players-card').classList.toggle('hidden', !list);
+  if (!list) return;
+  const box = $('players');
+  box.replaceChildren();
+  const named = list.filter((p) => p.name).length;
+  $('players-count').textContent = list.length ? `${named} с именем из ${list.length}` : '';
+  if (!list.length) box.append(el('div', 'empty', 'Пока никого'));
+  const shown = playersAll ? list : list.slice(0, 8);
+  for (const p of shown) {
+    const name = p.name ?? '';
+    const btn = html('player', `
+      <span class="ini" style="background:${avColor(p.visitor_id)}">${name ? esc([...name][0].toUpperCase()) : '?'}</span>
+      <span class="pn${name ? '' : ' anon'}">${name ? esc(name) : `без имени · ${esc(p.visitor_id.slice(0, 6))}`}</span>
+      <span class="when">${esc(ago(p.last_ts))}</span>
+      <span class="ps">${p.games ? `<b>${fmt(p.games)}</b> ${plural(p.games, ['партия', 'партии', 'партий'])} · <b>${fmt(p.wins)}</b> ${plural(p.wins, ['победа', 'победы', 'побед'])}` : 'ещё не доиграл ни одной партии'}</span>`, 'button');
+    btn.title = p.visitor_id;
+    btn.onclick = () => {
+      setPlayer(p.visitor_id);
+      $('games').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    box.append(btn);
+  }
+  const more = $('players-more');
+  more.classList.toggle('hidden', list.length <= 8);
+  more.textContent = playersAll ? 'Свернуть' : `Показать всех (${list.length})`;
+}
+
 function renderSummary(): void {
   if (!summary) return;
   const s = summary;
   renderKpis();
   renderChart();
+  renderPlayers();
 
   const bots = $('bots');
   bots.replaceChildren();
@@ -311,6 +358,7 @@ interface GameRow {
   color: string | null; time_control: string | null; chess960: boolean; result: string; how: string | null;
   reason: string | null; opening: string | null; plies: number | null; accuracy: number | null;
   blunders: number | null; mistakes: number | null; inaccuracies: number | null; duration_s: number | null;
+  player_name?: string | null;
 }
 
 let page = 0;
@@ -338,13 +386,14 @@ async function loadGames(): Promise<void> {
   $('f-player-clear').classList.toggle('hidden', !player);
   if (mode) q.append('mode', `eq.${mode}`);
   if (bot) q.append('bot_id', `eq.${bot}`);
+  const rawPlayer = $<HTMLInputElement>('f-player').value.trim();
+  const nameQ = rawPlayer.replace(/[*,()%\\"]/g, '');
   if (/^[0-9a-f-]{36}$/.test(player)) q.append('visitor_id', `eq.${player}`);
   else if (/^[0-9a-f]{1,8}$/.test(player)) {
-    // uuid нельзя искать по началу напрямую — ищем в диапазоне номеров с этим началом
+    // похоже на начало номера — ищем и по номеру (диапазон uuid с этим началом), и по имени
     const lo = player.padEnd(8, '0'), hi = player.padEnd(8, 'f');
-    q.append('visitor_id', `gte.${lo}-0000-0000-0000-000000000000`);
-    q.append('visitor_id', `lte.${hi}-ffff-ffff-ffff-ffffffffffff`);
-  }
+    q.append('or', `(player_name.ilike.*${nameQ}*,and(visitor_id.gte.${lo}-0000-0000-0000-000000000000,visitor_id.lte.${hi}-ffff-ffff-ffff-ffffffffffff))`);
+  } else if (nameQ) q.append('player_name', `ilike.*${nameQ}*`);
   const res = await api(`cc_games?${q}`, { headers: { Prefer: 'count=exact' } });
   const rows = (await res.json().catch(() => [])) as GameRow[];
   if (!res.ok) throw new Error((rows as unknown as { message?: string }).message ?? res.statusText);
@@ -378,7 +427,7 @@ async function loadGames(): Promise<void> {
       <div class="opp">${isBot ? esc(g.bot_name ?? g.bot_id) : 'Два игрока'}${g.chess960 ? ' <small>· 960</small>' : ''}${isBot && g.color ? ` <small>· ${g.color === 'white' ? 'за белых' : 'за чёрных'}</small>` : ''}</div>
       <span class="badge ${cls}" title="${esc(g.reason)}">${badge}</span>
       <div class="line">${parts.map((x) => `<span>${x}</span>`).join(' · ')}</div>
-      <div class="line"><button class="chip" title="${esc(g.visitor_id)}">${esc(g.visitor_id.slice(0, 6))}</button> · <span>${esc(when)}</span>${g.duration_s != null ? ` · <span>${dur(g.duration_s)}</span>` : ''}${g.time_control && g.time_control !== 'Без часов' ? ` · <span>⏱ ${esc(g.time_control.replace(/\s*\(.*\)/, '').replace(/ \+ /, '+'))}</span>` : ''}</div>`);
+      <div class="line"><button class="chip${g.player_name ? ' named' : ''}" title="${esc(g.visitor_id)}">${g.player_name ? `👤 ${esc(g.player_name)}` : esc(g.visitor_id.slice(0, 6))}</button> · <span>${esc(when)}</span>${g.duration_s != null ? ` · <span>${dur(g.duration_s)}</span>` : ''}${g.time_control && g.time_control !== 'Без часов' ? ` · <span>⏱ ${esc(g.time_control.replace(/\s*\(.*\)/, '').replace(/ \+ /, '+'))}</span>` : ''}</div>`);
     card.querySelector<HTMLButtonElement>('.chip')!.onclick = () => setPlayer(g.visitor_id);
     if (g.opening) card.title = g.opening;
     box.append(card);
@@ -469,6 +518,10 @@ for (const b of $('metric').querySelectorAll<HTMLButtonElement>('button'))
     pref('metric', metric);
     renderChart();
   };
+$('players-more').onclick = () => {
+  playersAll = !playersAll;
+  renderPlayers();
+};
 let resizeT = 0;
 addEventListener('resize', () => {
   clearTimeout(resizeT);
