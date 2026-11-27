@@ -2,6 +2,7 @@
 import { SITE_URL, clipSupported, recordClip, type ClipMoment } from './clip';
 import { VOICE } from './roast';
 import { $ } from './shared';
+import { trackClip } from './telemetry';
 
 let busy = false;
 
@@ -54,6 +55,7 @@ export async function showClip(m: ClipMoment): Promise<void> {
     const voice = await voiceFor(m.phrase);
     const rec = await recordClip(m, voice, canvas, (q) => (fill.style.width = `${Math.round(q * 100)}%`));
     const url = URL.createObjectURL(rec.blob);
+    trackClip({ voice: !!voice, ext: rec.ext });
     const video = document.createElement('video');
     video.src = url;
     video.controls = true;

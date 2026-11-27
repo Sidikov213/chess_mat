@@ -17,6 +17,7 @@ import { showClip } from './clipui';
 import { STANDARD_FEN, fen960, isStandardFen } from './chess960';
 import { openingName } from './openings';
 import { loadHistory, saveGame } from './history';
+import { TrackedGame } from './telemetry';
 import { checkGame, unlock } from './achievements';
 
 interface NetEvent {
@@ -177,6 +178,9 @@ export function initDuo(openReview: (pgn: string) => void): void {
   // ---------- партия ----------
 
   /** Новая партия с расстановки fen (обычной или 960). */
+  /** Анонимная статистика сайта: партия считается начатой с первого хода. */
+  let tracked: TrackedGame | null = null;
+
   function startGame(fen = startFen): void {
     startFen = fen;
     is960 = !isStandardFen(fen);
@@ -194,6 +198,10 @@ export function initDuo(openReview: (pgn: string) => void): void {
     running = null;
     lowWarned = false;
     orientation = mode === 'net' ? myColor : 'white';
+    tracked = new TrackedGame({
+      mode, color: mode === 'net' ? myColor : undefined, chess960: is960,
+      time_control: tc.base ? `${tc.base} + ${tc.inc}` : 'Без часов',
+    });
     coach.newGame();
     $('duo-over').classList.add('hidden');
     $('duo-promo').classList.add('hidden');
@@ -223,6 +231,7 @@ export function initDuo(openReview: (pgn: string) => void): void {
     ucis.push(uci);
     pos.play(move);
     history.push(repetitionKey(pos));
+    tracked?.start();
     void coach.onMove({
       fenBefore, fenAfter: fenOf(pos), uci, san, mover, ply: ucis.length, capture,
       check: pos.isCheck(), end: pos.isEnd(),
@@ -257,6 +266,10 @@ export function initDuo(openReview: (pgn: string) => void): void {
       opponent: net_ ? `🌐 ${names[other(myColor)]}` : '🛋️ Друг за компьютером',
       myColor: net_ ? myColor : null, score, reason: over?.reason ?? '', opening: openingLabel(),
       plies: ucis.length, accuracy: null, chess960: is960, pgn: toPgn(),
+    });
+    tracked?.finish({
+      result: net_ ? (winner === null ? 'draw' : winner === myColor ? 'win' : 'loss') : (winner ?? 'draw'),
+      how, reason: over?.reason ?? '', opening: openingLabel(), plies: ucis.length,
     });
     const last = parseUci(ucis.at(-1) ?? '');
     checkGame({

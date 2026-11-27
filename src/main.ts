@@ -9,6 +9,9 @@ import { initReview } from './review';
 import { $ } from './shared';
 import { renderAchievements } from './achievements';
 import { deleteGame, loadHistory } from './history';
+import { trackVisit } from './telemetry';
+
+trackVisit();
 
 const engine = new Engine();
 engine

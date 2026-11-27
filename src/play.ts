@@ -22,6 +22,7 @@ import { PERSONAS, chooseMove, pickPhrase, type BotEvent } from './personas';
 import { STANDARD_FEN, fen960 } from './chess960';
 import { openingName } from './openings';
 import { loadHistory, saveGame } from './history';
+import { TrackedGame } from './telemetry';
 import { checkGame, unlock } from './achievements';
 import type { ClipMoment } from './clip';
 import { showClip } from './clipui';
@@ -98,6 +99,8 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
 
   // Часы: оставшееся время сторон, чьи сейчас идут и с какого момента.
   let tc = TIME_CONTROLS[0];
+  /** Анонимная статистика сайта: партия считается начатой с первого хода игрока. */
+  let tracked: TrackedGame | null = null;
   const clock: Record<Side, number> = { white: 0, black: 0 };
   let running: Side | null = null;
   let since = 0;
@@ -325,6 +328,12 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
         mode: 'bot', opponent: `${persona().emoji} ${persona().name}`, myColor: side, score,
         reason: over?.reason ?? '', opening: openingLabel(), plies: moves.length,
         accuracy: acc === null ? null : Math.round(acc), chess960: is960, pgn: toPgn(),
+      });
+      tracked?.finish({
+        result: score === 1 ? 'win' : score === 0 ? 'loss' : 'draw',
+        how: mate ? 'mate' : how === 'time' ? 'time' : how === 'resign' ? 'resign' : winner === null ? 'draw' : 'other',
+        reason: over?.reason ?? '', opening: openingLabel(), plies: moves.length,
+        accuracy: acc, blunders: count('blunder'), mistakes: count('mistake'), inaccuracies: count('inaccuracy'),
       });
       checkGame({
         mode: 'bot', won: winner === side, lost: winner !== null && winner !== side,
@@ -602,6 +611,7 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
     const fenBefore = fenOf(pos);
     stopClock(true);
     const played = applyMove(move);
+    tracked?.start();
     render();
     $('play-feedback').textContent = '';
     if (coachOn()) {
@@ -738,6 +748,10 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
     wrap.classList.remove('fx-wasted');
     is960 = $<HTMLInputElement>('play-960').checked;
     startFen = is960 ? fen960() : STANDARD_FEN;
+    tracked = new TrackedGame({
+      mode: 'bot', bot_id: persona().id, bot_name: persona().name, bot_elo: persona().elo,
+      color: side, time_control: tc.name, chess960: is960,
+    });
     drawStreak();
     drawRecord();
     drawBot();

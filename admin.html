@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Chess Coach — статистика</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <header class="top">
+      <h1>Chess Coach · статистика</h1>
+      <span id="who" class="muted"></span>
+      <button id="refresh" class="hidden">Обновить</button>
+      <button id="logout" class="hidden">Выйти</button>
+    </header>
+
+    <form id="login" class="card login hidden">
+      <h2>Вход для админа</h2>
+      <label>Почта <input id="email" type="email" autocomplete="username" required /></label>
+      <label>Пароль <input id="password" type="password" autocomplete="current-password" required /></label>
+      <button class="primary" type="submit">Войти</button>
+      <div id="login-err" class="err"></div>
+    </form>
+
+    <div id="not-admin" class="card hidden"></div>
+
+    <main id="dash" class="hidden">
+      <section class="periods" id="periods"></section>
+
+      <section class="card">
+        <h2>По дням, последние 30</h2>
+        <div class="legend"><span class="sw v"></span>посетители <span class="sw s"></span>начато партий <span class="sw f"></span>доиграно</div>
+        <div id="days" class="days"></div>
+      </section>
+
+      <div class="grid2">
+        <section class="card">
+          <h2>Боты</h2>
+          <div class="scroll"><table id="bots"></table></div>
+        </section>
+        <section class="card">
+          <h2>Откуда пришли (30 дней)</h2>
+          <table id="sources"></table>
+          <h2>Устройства (30 дней)</h2>
+          <table id="devices"></table>
+          <h2>Режимы (доиграно)</h2>
+          <table id="modes"></table>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="games-head">
+          <h2>Партии</h2>
+          <select id="f-mode">
+            <option value="">все режимы</option>
+            <option value="bot">против бота</option>
+            <option value="local">два игрока</option>
+          </select>
+          <select id="f-bot"><option value="">все боты</option></select>
+          <input id="f-player" placeholder="номер игрока" size="10" />
+          <span id="games-count" class="muted"></span>
+        </div>
+        <div class="scroll"><table id="games" class="games"></table></div>
+        <div class="pager">
+          <button id="prev">← Новее</button>
+          <span id="page" class="muted"></span>
+          <button id="next">Старее →</button>
+        </div>
+      </section>
+      <p class="muted foot">Игрок — анонимный номер из браузера (первые 6 символов). Брошенные — начатые, но не доигранные партии (закрыли вкладку, нажали «Новая партия»). Время — московское.</p>
+    </main>
+    <script type="module" src="/src/admin.ts"></script>
+  </body>
+</html>
