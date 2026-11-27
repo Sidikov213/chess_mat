@@ -150,6 +150,14 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
     return running === c ? clock[c] - (performance.now() - since) : clock[c];
   }
 
+  /** Позиция — в наблюдение админки. */
+  function liveSnapshot(): void {
+    tracked?.snapshot({
+      fen: fenOf(pos), lastUci: moves.at(-1)?.uci, sans: moves.map((m) => m.san),
+      clocks: timed() ? { white: remaining('white'), black: remaining('black') } : null,
+    });
+  }
+
   /** Часы стороны идут только после первого хода каждой стороны, как на Lichess. */
   function startClock(c: Side): void {
     if (!timed() || over || moves.length < 2) return;
@@ -574,6 +582,7 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
       stopClock(true);
       const captured = isCapture(pos, move);
       applyMove(move);
+      liveSnapshot();
       if (!pos.isEnd()) {
         if (pos.isCheck()) {
           botSay('check', 0.6);
@@ -612,6 +621,7 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
     stopClock(true);
     const played = applyMove(move);
     tracked?.start();
+    liveSnapshot();
     render();
     $('play-feedback').textContent = '';
     if (coachOn()) {
@@ -780,6 +790,7 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
     changeAura(-300, 'ход назад');
     chat.push('mistake', 0.7);
     rebuild();
+    liveSnapshot();
     moments = moments.filter((m) => m.ucis.length <= moves.length);
     drawClipBtn();
     $('play-feedback').textContent = '';

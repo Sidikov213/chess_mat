@@ -178,6 +178,22 @@ export class TrackedGame {
     event('game_start', { ...this.info }, this.id);
   }
 
+  /** Позиция после хода (или отмены хода) — для наблюдения в админке. Только у начатой партии. */
+  snapshot(p: { fen: string; lastUci?: string; sans: string[]; clocks?: { white: number; black: number } | null }): void {
+    if (!this.startedAt || this.finished) return;
+    const ms = (v: number) => Math.max(0, Math.min(36_000_000, Math.round(v)));
+    post('cc_moves', {
+      game_id: this.id,
+      visitor_id: VISITOR,
+      ply: p.sans.length,
+      fen: p.fen.slice(0, 100),
+      last_uci: p.lastUci?.slice(0, 6) ?? null,
+      sans: p.sans.join(' ').slice(-8000),
+      clock_white: p.clocks ? ms(p.clocks.white) : null,
+      clock_black: p.clocks ? ms(p.clocks.black) : null,
+    });
+  }
+
   finish(r: GameResult): void {
     if (this.finished) return;
     this.finished = true;

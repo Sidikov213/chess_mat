@@ -38,6 +38,14 @@
     <div id="not-admin" class="card hidden"></div>
 
     <main id="dash" class="hidden">
+      <section class="card live hidden" id="live-card">
+        <div class="card-head">
+          <h2><span class="live-dot"></span>Сейчас играют</h2>
+          <span id="live-count" class="muted small-t"></span>
+        </div>
+        <div id="live" class="live-list"></div>
+      </section>
+
       <div class="seg" id="period" role="tablist">
         <button data-p="today">Сегодня</button>
         <button data-p="week">7 дней</button>

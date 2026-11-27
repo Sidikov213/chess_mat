@@ -18,7 +18,7 @@ function open(first: boolean): void {
     <form class="name-card">
       <div class="name-emoji">♟️</div>
       <h2>${first ? 'Как тебя зовут?' : 'Сменить имя'}</h2>
-      <p>Имя или ник — чтобы мы видели, кто играет.</p>
+      <p>Имя или ник — чтобы мы видели, кто играет. Автор сайта может смотреть партии.</p>
       <input name="n" maxlength="${NAME_MAX}" placeholder="Например, Магомед" autocomplete="nickname" enterkeyhint="go" />
       <button class="primary" type="submit">${first ? 'Играть' : 'Сохранить'}</button>
       <button class="link" type="button">${first ? 'Пропустить' : 'Отмена'}</button>

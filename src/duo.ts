@@ -127,6 +127,14 @@ export function initDuo(openReview: (pgn: string) => void): void {
 
   const remaining = (c: Side) => (running === c ? clock[c] - (performance.now() - since) : clock[c]);
 
+  /** Позиция — в наблюдение админки. */
+  function liveSnapshot(): void {
+    tracked?.snapshot({
+      fen: fenOf(pos), lastUci: ucis.at(-1), sans,
+      clocks: timed() ? { white: remaining('white'), black: remaining('black') } : null,
+    });
+  }
+
   function startClock(c: Side): void {
     if (!timed() || over || !started || ucis.length < 2) return;
     stopClock(false);
@@ -232,6 +240,7 @@ export function initDuo(openReview: (pgn: string) => void): void {
     pos.play(move);
     history.push(repetitionKey(pos));
     tracked?.start();
+    liveSnapshot();
     void coach.onMove({
       fenBefore, fenAfter: fenOf(pos), uci, san, mover, ply: ucis.length, capture,
       check: pos.isCheck(), end: pos.isEnd(),
@@ -435,6 +444,7 @@ export function initDuo(openReview: (pgn: string) => void): void {
     }
     over = null;
     $('duo-over').classList.add('hidden');
+    liveSnapshot();
     coach.undo(pos.turn);
     if (autoflip.checked) orientation = pos.turn;
     startClock(pos.turn);

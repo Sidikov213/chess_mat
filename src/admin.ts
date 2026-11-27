@@ -2,6 +2,7 @@
 // Читать может только пользователь из таблицы cc_admins (проверяет сама база, см. supabase/schema.sql).
 import './admin.css';
 import { SUPABASE_KEY, SUPABASE_URL } from './telemetry';
+import { openWatch, type LiveInfo } from './watch';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const TZ = 'Europe/Moscow';
@@ -434,6 +435,61 @@ async function loadGames(): Promise<void> {
   }
 }
 
+// ---------- сейчас играют ----------
+
+interface LiveRow extends LiveInfo { ts: string; ply: number }
+const LIVE_EVERY_MS = 10_000;
+let liveTimer = 0;
+let watching = false;
+
+async function loadLive(): Promise<void> {
+  clearTimeout(liveTimer);
+  let list: LiveRow[] | null = null;
+  try {
+    list = await rpc<LiveRow[]>('cc_live', { minutes: 15 });
+  } catch (e) {
+    if (e instanceof Error && e.message === 'not_logged_in') throw e;
+    list = null; // в базе ещё нет добавки 003_live.sql — блок просто не показываем
+  }
+  const card = $('live-card');
+  card.classList.toggle('hidden', !list);
+  if (list) {
+    const box = $('live');
+    box.replaceChildren();
+    $('live-count').textContent = list.length ? `${list.length}` : '';
+    if (!list.length) box.append(el('div', 'empty', 'Сейчас никто не играет. Блок обновляется сам.'));
+    for (const g of list) {
+      const name = g.name ?? '';
+      const i = g.info ?? {};
+      const vs = i.mode === 'bot' ? `против ${BOT_EMOJI[i.bot_id ?? ''] ?? ''} ${i.bot_name ?? 'бота'}` : 'два игрока';
+      const moves = Math.ceil(g.ply / 2);
+      const row = html('live-row', `
+        <span class="ini" style="background:${avColor(g.visitor_id)}">${name ? esc([...name][0].toUpperCase()) : '?'}</span>
+        <span class="pn">${name ? esc(name) : `без имени · ${esc(g.visitor_id.slice(0, 6))}`}</span>
+        <span class="watch-btn">👁 Смотреть</span>
+        <span class="ls">${esc(vs)} · ${moves} ${plural(moves, ['ход', 'хода', 'ходов'])} · ${esc(ago(g.ts))}</span>`, 'button');
+      row.onclick = () => {
+        watching = true;
+        const close = openWatch(g, api);
+        const obs = new MutationObserver(() => {
+          if (!document.querySelector('.watch')) {
+            obs.disconnect();
+            watching = false;
+            void loadLive().catch(fail);
+          }
+        });
+        obs.observe(document.body, { childList: true });
+        void close;
+      };
+      box.append(row);
+    }
+  }
+  liveTimer = window.setTimeout(() => {
+    if (!watching && !document.hidden && session) void loadLive().catch(fail);
+    else liveTimer = window.setTimeout(() => void loadLive().catch(fail), LIVE_EVERY_MS);
+  }, LIVE_EVERY_MS);
+}
+
 // ---------- запуск ----------
 
 function fail(e: unknown): void {
@@ -470,7 +526,7 @@ async function refresh(): Promise<void> {
     summary = await rpc<Summary>('cc_summary', { tz: TZ });
     selDay = -1;
     renderSummary();
-    await loadGames();
+    await Promise.all([loadGames(), loadLive()]);
   } finally {
     btn.disabled = false;
     btn.classList.remove('spin');
