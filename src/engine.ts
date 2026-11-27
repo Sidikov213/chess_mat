@@ -32,6 +32,10 @@ const WASM_ENGINE = 'engine/wasm-worker.js#stockfish-19-lite-single.wasm';
 const ASM_ENGINE = 'engine/stockfish-19-asm.js';
 /** Сколько ждём ответа wasm-движка, прежде чем перейти на запасной (wasm 1,8 МБ на медленном интернете). */
 const WASM_TIMEOUT_MS = 25_000;
+/** Анализ «на глубину» (оценка тренера) не дольше этого: на медленном телефоне глубина 12 может идти минуту. */
+const DEPTH_TIME_CAP_MS = { wasm: 4000, asm: 2500 };
+/** Если движок не ответил за время расчёта плюс столько — считаем, что он завис или его остановил браузер. */
+const STALL_MS = { wasm: 5000, asm: 12000 };
 
 /** Умеет ли браузер WebAssembly с SIMD — без него wasm-сборка Stockfish не запустится. */
 function wasmSimdSupported(): boolean {
@@ -59,11 +63,21 @@ export class Engine {
   private queue: Promise<unknown> = Promise.resolve();
   private onLine: ((line: string) => void) | null = null;
   private generation = 0;
+  private stalls = 0;
   /** Какая сборка работает: wasm — обычная, asm — запасная без WebAssembly. */
   kind: 'wasm' | 'asm' = 'wasm';
+  /** Готов ли движок (false — загружается или перезапускается после зависания). */
+  isReady = false;
+  /** Вызывается, когда меняется isReady, — чтобы интерфейс показал «Загружаю движок…». */
+  onStatus: (() => void) | null = null;
 
   constructor() {
-    this.ready = this.boot();
+    this.ready = this.boot(false);
+  }
+
+  private setReady(v: boolean): void {
+    this.isReady = v;
+    this.onStatus?.();
   }
 
   private spawn(path: string, onFail: () => void): void {
@@ -81,8 +95,10 @@ export class Engine {
     };
   }
 
-  private async boot(): Promise<void> {
-    if (wasmSimdSupported() && !forcedAsm()) {
+  private async boot(asmOnly: boolean): Promise<void> {
+    this.setReady(false);
+    if (!asmOnly && wasmSimdSupported() && !forcedAsm()) {
+      this.kind = 'wasm';
       const ok = await new Promise<boolean>((resolve) => {
         let done = false;
         const finish = (v: boolean) => {
@@ -95,13 +111,23 @@ export class Engine {
         this.spawn(WASM_ENGINE, () => finish(false));
         this.handshake().then(() => finish(true));
       });
-      if (ok) return;
+      if (ok) return this.setReady(true);
       console.warn('Stockfish wasm не запустился — переключаюсь на запасную сборку без WebAssembly');
     }
     this.kind = 'asm';
     this.onLine = null;
     this.spawn(ASM_ENGINE, () => undefined);
     await this.handshake();
+    this.setReady(true);
+  }
+
+  /** Движок завис или его остановил браузер: перезапуск, со второго раза — запасная сборка. */
+  private restart(): Promise<void> {
+    this.stalls++;
+    console.warn(`Stockfish не отвечает — перезапуск (${this.stalls})`);
+    this.onLine = null;
+    this.ready = this.boot(this.kind === 'asm' || this.stalls >= 2);
+    return this.ready;
   }
 
   private async handshake(): Promise<void> {
@@ -140,25 +166,43 @@ export class Engine {
       const whiteToMove = fen.split(' ')[1] !== 'b';
       const lines = new Map<number, Line>();
       const sorted = () => [...lines.values()].sort((a, b) => a.multipv - b.multipv);
-      this.worker.postMessage(`setoption name MultiPV value ${opts.multipv ?? 1}`);
-      this.worker.postMessage(`setoption name Skill Level value ${opts.skill ?? 20}`);
-      this.worker.postMessage(`setoption name UCI_Chess960 value ${opts.chess960 ? 'true' : 'false'}`);
-      this.worker.postMessage(`position fen ${fen}`);
-      const bestmove = await new Promise<string>((resolve) => {
-        this.onLine = (line) => {
-          if (line.startsWith('info ')) {
-            const parsed = parseInfo(line, whiteToMove);
-            if (parsed) {
-              lines.set(parsed.multipv, parsed);
-              onUpdate?.(sorted());
-            }
-          } else if (line.startsWith('bestmove')) {
+      const go = (): Promise<string | null> => {
+        lines.clear();
+        this.worker.postMessage(`setoption name MultiPV value ${opts.multipv ?? 1}`);
+        this.worker.postMessage(`setoption name Skill Level value ${opts.skill ?? 20}`);
+        this.worker.postMessage(`setoption name UCI_Chess960 value ${opts.chess960 ? 'true' : 'false'}`);
+        this.worker.postMessage(`position fen ${fen}`);
+        const cap = DEPTH_TIME_CAP_MS[this.kind];
+        const limit = (opts.movetime ?? cap) + STALL_MS[this.kind];
+        return new Promise<string | null>((resolve) => {
+          const watchdog = setTimeout(() => {
             this.onLine = null;
-            resolve(line.split(' ')[1] ?? '');
-          }
-        };
-        this.worker.postMessage(opts.movetime ? `go movetime ${opts.movetime}` : `go depth ${opts.depth ?? 12}`);
-      });
+            resolve(null);
+          }, limit);
+          this.onLine = (line) => {
+            if (line.startsWith('info ')) {
+              const parsed = parseInfo(line, whiteToMove);
+              if (parsed) {
+                lines.set(parsed.multipv, parsed);
+                onUpdate?.(sorted());
+              }
+            } else if (line.startsWith('bestmove')) {
+              clearTimeout(watchdog);
+              this.onLine = null;
+              resolve(line.split(' ')[1] ?? '');
+            }
+          };
+          this.worker.postMessage(opts.movetime ? `go movetime ${opts.movetime}` : `go depth ${opts.depth ?? 12} movetime ${cap}`);
+        });
+      };
+      let bestmove = await go();
+      // Зависание: перезапускаем движок и считаем заново (до двух раз).
+      for (let i = 0; bestmove === null && i < 2; i++) {
+        await this.restart();
+        if (gen !== this.generation) return null;
+        bestmove = await go();
+      }
+      if (bestmove === null) return null;
       if (gen !== this.generation) return null;
       return { bestmove, lines: sorted() };
     };

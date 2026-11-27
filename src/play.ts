@@ -477,6 +477,7 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
       const res = over.winner === null ? 'Ничья' : over.winner === side ? 'Вы победили' : 'Вы проиграли';
       return `${res}: ${over.reason.toLowerCase()}`;
     }
+    if (!myTurn() && !engine.isReady) return 'Загружаю шахматный движок…';
     return myTurn() ? (pos.isCheck() ? 'Ваш ход — вам шах!' : 'Ваш ход') : 'Бот думает…';
   }
 
@@ -916,5 +917,6 @@ export function initPlay(engine: Engine, openReview: (pgn: string) => void): voi
     render();
     void next();
   };
+  engine.onStatus = () => render();
   newGame();
 }
