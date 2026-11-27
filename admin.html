@@ -2,17 +2,29 @@
 <html lang="ru">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#161513" />
     <title>Chess Coach — статистика</title>
     <link rel="icon" href="icon.svg" type="image/svg+xml" />
   </head>
   <body>
     <header class="top">
-      <h1>Chess Coach · статистика</h1>
-      <span id="who" class="muted"></span>
-      <button id="refresh" class="hidden">Обновить</button>
-      <button id="logout" class="hidden">Выйти</button>
+      <div class="brand">
+        <img src="icon.svg" alt="" width="32" height="32" />
+        <div>
+          <h1>Статистика</h1>
+          <div id="who" class="who"></div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button id="refresh" class="icon-btn hidden" title="Обновить" aria-label="Обновить">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg>
+        </button>
+        <button id="logout" class="icon-btn hidden" title="Выйти" aria-label="Выйти">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg>
+        </button>
+      </div>
     </header>
 
     <form id="login" class="card login hidden">
@@ -26,49 +38,79 @@
     <div id="not-admin" class="card hidden"></div>
 
     <main id="dash" class="hidden">
-      <section class="periods" id="periods"></section>
+      <div class="seg" id="period" role="tablist">
+        <button data-p="today">Сегодня</button>
+        <button data-p="week">7 дней</button>
+        <button data-p="month">30 дней</button>
+        <button data-p="all">Всё время</button>
+      </div>
+
+      <section class="kpis" id="kpis"></section>
 
       <section class="card">
-        <h2>По дням, последние 30</h2>
-        <div class="legend"><span class="sw v"></span>посетители <span class="sw s"></span>начато партий <span class="sw f"></span>доиграно</div>
-        <div id="days" class="days"></div>
+        <div class="card-head">
+          <h2 id="chart-title">По дням</h2>
+          <div class="seg small" id="metric">
+            <button data-m="visitors">Люди</button>
+            <button data-m="started">Партии</button>
+            <button data-m="finished">Доиграно</button>
+          </div>
+        </div>
+        <div class="chart" id="chart"></div>
+        <div class="chart-tip" id="chart-tip"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Боты</h2>
+          <span class="muted small-t">за всё время</span>
+        </div>
+        <div class="legend">
+          <span><i class="dot win"></i>игрок выиграл</span>
+          <span><i class="dot draw"></i>ничья</span>
+          <span><i class="dot loss"></i>бот выиграл</span>
+        </div>
+        <div id="bots" class="bots"></div>
       </section>
 
       <div class="grid2">
         <section class="card">
-          <h2>Боты</h2>
-          <div class="scroll"><table id="bots"></table></div>
+          <div class="card-head"><h2>Откуда пришли</h2><span class="muted small-t">30 дней</span></div>
+          <div id="sources" class="hbars"></div>
         </section>
         <section class="card">
-          <h2>Откуда пришли (30 дней)</h2>
-          <table id="sources"></table>
-          <h2>Устройства (30 дней)</h2>
-          <table id="devices"></table>
-          <h2>Режимы (доиграно)</h2>
-          <table id="modes"></table>
+          <div class="card-head"><h2>Устройства</h2><span class="muted small-t">30 дней</span></div>
+          <div id="devices" class="hbars"></div>
+          <div class="card-head mt"><h2>Режимы</h2><span class="muted small-t">доиграно</span></div>
+          <div id="modes" class="hbars"></div>
         </section>
       </div>
 
       <section class="card">
-        <div class="games-head">
+        <div class="card-head">
           <h2>Партии</h2>
-          <select id="f-mode">
-            <option value="">все режимы</option>
-            <option value="bot">против бота</option>
-            <option value="local">два игрока</option>
-          </select>
-          <select id="f-bot"><option value="">все боты</option></select>
-          <input id="f-player" placeholder="номер игрока" size="10" />
-          <span id="games-count" class="muted"></span>
+          <span id="games-count" class="muted small-t"></span>
         </div>
-        <div class="scroll"><table id="games" class="games"></table></div>
+        <div class="filters">
+          <select id="f-mode">
+            <option value="">Все режимы</option>
+            <option value="bot">Против бота</option>
+            <option value="local">Два игрока</option>
+          </select>
+          <select id="f-bot"><option value="">Все боты</option></select>
+          <div class="player-filter">
+            <input id="f-player" placeholder="Номер игрока" autocomplete="off" />
+            <button id="f-player-clear" class="clear hidden" aria-label="Сбросить">×</button>
+          </div>
+        </div>
+        <div id="games" class="games"></div>
         <div class="pager">
           <button id="prev">← Новее</button>
           <span id="page" class="muted"></span>
           <button id="next">Старее →</button>
         </div>
       </section>
-      <p class="muted foot">Игрок — анонимный номер из браузера (первые 6 символов). Брошенные — начатые, но не доигранные партии (закрыли вкладку, нажали «Новая партия»). Время — московское.</p>
+      <p class="foot">Игрок — анонимный номер из браузера, нажмите на него, чтобы увидеть все его партии. Брошенные — начатые, но не доигранные (закрыли вкладку, начали новую). Время московское.</p>
     </main>
     <script type="module" src="/src/admin.ts"></script>
   </body>

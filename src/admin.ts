@@ -103,44 +103,37 @@ function showOnly(id: 'login' | 'not-admin' | 'dash'): void {
 }
 
 const fmt = (n: number | null | undefined) => (n == null ? '—' : Number(n).toLocaleString('ru-RU'));
-const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '—');
+const pctN = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string | number | null, cls?: string): HTMLElementTagNameMap[K] {
+function plural(n: number, [one, few, many]: [string, string, string]): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string | number | null): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
-  if (text != null) e.textContent = String(text);
   if (cls) e.className = cls;
+  if (text != null) e.textContent = String(text);
   return e;
 }
 
-function fillTable(t: HTMLTableElement, head: string[], rows: (string | number | null | HTMLElement)[][], numeric: number[] = []): void {
-  t.replaceChildren();
-  const tr = el('tr');
-  head.forEach((h, i) => tr.append(el('th', h, numeric.includes(i) ? 'n' : undefined)));
-  t.append(el('thead'));
-  t.tHead!.append(tr);
-  const tb = el('tbody');
-  if (!rows.length) {
-    const r = el('tr');
-    const td = el('td', 'Пока пусто', 'muted');
-    td.colSpan = head.length;
-    r.append(td);
-    tb.append(r);
-  }
-  for (const row of rows) {
-    const r = el('tr');
-    row.forEach((c, i) => {
-      const td = c instanceof HTMLElement ? c : el('td', c ?? '—', numeric.includes(i) ? 'n' : undefined);
-      r.append(td);
-    });
-    tb.append(r);
-  }
-  t.append(tb);
+/** Небольшой HTML из доверенного шаблона; данные подставлять только через esc(). */
+function html(cls: string, markup: string, tag: keyof HTMLElementTagNameMap = 'div'): HTMLElement {
+  const e = document.createElement(tag);
+  e.className = cls;
+  e.innerHTML = markup;
+  return e;
 }
+const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 interface Period { visitors: number; new_visitors: number; visits: number; games_started: number; games_finished: number; clips: number }
+type PeriodKey = 'today' | 'week' | 'month' | 'all';
+interface Day { day: string; visitors: number; started: number; finished: number }
 interface Summary {
-  periods: Record<'today' | 'week' | 'month' | 'all', Period>;
-  days: { day: string; visitors: number; started: number; finished: number }[];
+  periods: Record<PeriodKey, Period>;
+  days: Day[];
   bots: { bot_id: string; bot_name: string | null; started: number; finished: number; player_wins: number; draws: number; bot_wins: number; avg_accuracy: number | null }[];
   modes: Record<string, number>;
   sources: { source: string; visits: number }[];
@@ -148,71 +141,170 @@ interface Summary {
 }
 
 const BOT_EMOJI: Record<string, string> = { kid: '👶', grandpa: '👴', troll: '🤡', tiger: '🐯', taxi: '🧔', eagle: '🦅', prof: '🧠', machine: '🤖' };
-const MODE_NAME: Record<string, string> = { bot: 'против бота', local: 'два игрока за компьютером', net: 'по сети' };
+const BOT_ORDER = ['kid', 'grandpa', 'troll', 'tiger', 'taxi', 'eagle', 'prof', 'machine'];
+const MODE_NAME: Record<string, string> = { bot: 'Против бота', local: 'Два игрока за одним экраном', net: 'По сети' };
+const SOURCE_NAME: Record<string, string> = { tiktok: 'TikTok', telegram: 'Telegram', vk: 'ВКонтакте', youtube: 'YouTube', instagram: 'Instagram', google: 'Google', yandex: 'Яндекс' };
 
-function renderSummary(s: Summary): void {
-  const box = $('periods');
-  box.replaceChildren();
-  const names: [keyof Summary['periods'], string][] = [['today', 'Сегодня'], ['week', '7 дней'], ['month', '30 дней'], ['all', 'Всё время']];
-  for (const [k, title] of names) {
-    const p = s.periods[k];
-    const card = el('div', null, 'card period');
-    card.append(el('h3', title), el('div', fmt(p.visitors), 'big'));
-    const kv = el('div', null, 'kv');
-    const abandoned = Math.max(0, p.games_started - p.games_finished);
-    const pairs: [string, string][] = [
-      ['посетителей', fmt(p.visitors)],
-      ['· новых', fmt(p.new_visitors)],
-      ['· вернулись', fmt(p.visitors - p.new_visitors)],
-      ['заходов', fmt(p.visits)],
-      ['начато партий', fmt(p.games_started)],
-      ['доиграно', `${fmt(p.games_finished)} (${pct(p.games_finished, p.games_started)})`],
-      ['брошено', fmt(abandoned)],
-      ['клипов', fmt(p.clips)],
-    ];
-    for (const [a, b] of pairs) kv.append(el('span', a), el('span', b));
-    card.append(kv);
-    box.append(card);
+let summary: Summary | null = null;
+let period: PeriodKey = (pref('period') as PeriodKey) || 'today';
+let metric: keyof Omit<Day, 'day'> = (pref('metric') as keyof Omit<Day, 'day'>) || 'visitors';
+let selDay = -1;
+
+function pref(k: string, v?: string): string | null {
+  try {
+    if (v !== undefined) localStorage.setItem(`chesscoach.admin.${k}`, v);
+    return localStorage.getItem(`chesscoach.admin.${k}`);
+  } catch {
+    return null;
   }
+}
 
-  const days = $('days');
-  days.replaceChildren();
-  const max = Math.max(1, ...s.days.map((d) => Math.max(d.visitors, d.started, d.finished)));
-  for (const d of s.days) {
-    const col = el('div', null, 'day');
-    const date = new Date(`${d.day}T12:00:00`);
-    col.title = `${date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}: посетителей ${d.visitors}, начато ${d.started}, доиграно ${d.finished}`;
-    for (const [cls, v] of [['v', d.visitors], ['s', d.started], ['f', d.finished]] as const) {
-      const bar = el('i', null, cls);
-      bar.style.height = `${(v / max) * 100}%`;
-      col.append(bar);
-    }
-    col.append(el('b', date.getDate()));
-    days.append(col);
-  }
+function markSeg(id: string, attr: string, value: string): void {
+  for (const b of $(id).querySelectorAll<HTMLButtonElement>('button')) b.classList.toggle('on', b.dataset[attr] === value);
+}
 
-  fillTable(
-    $<HTMLTableElement>('bots'),
-    ['Бот', 'Начато', 'Доиграно', 'Игрок выиграл', 'Ничьи', 'Бот выиграл', 'Бот побеждает', 'Ср. точность'],
-    s.bots.map((b) => [
-      `${BOT_EMOJI[b.bot_id] ?? ''} ${b.bot_name ?? b.bot_id}`,
-      fmt(b.started), fmt(b.finished), fmt(b.player_wins), fmt(b.draws), fmt(b.bot_wins),
-      pct(b.bot_wins, b.finished), b.avg_accuracy == null ? '—' : `${b.avg_accuracy}%`,
-    ]),
-    [1, 2, 3, 4, 5, 6, 7],
+function renderKpis(): void {
+  if (!summary) return;
+  markSeg('period', 'p', period);
+  const p = summary.periods[period];
+  const returning = Math.max(0, p.visitors - p.new_visitors);
+  const abandoned = Math.max(0, p.games_started - p.games_finished);
+  const done = pctN(p.games_finished, p.games_started);
+  const box = $('kpis');
+  box.replaceChildren(
+    html('kpi', `<div class="label">Посетители</div><div class="value">${fmt(p.visitors)}</div>
+      <div class="sub"><b>${fmt(p.new_visitors)}</b> ${plural(p.new_visitors, ['новый', 'новых', 'новых'])} · <b>${fmt(returning)}</b> ${plural(returning, ['вернулся', 'вернулись', 'вернулись'])}</div>`),
+    html('kpi', `<div class="label">Партии</div><div class="value">${fmt(p.games_started)}</div>
+      <div class="meter" title="доиграно ${done}%"><i class="a" style="flex:${p.games_finished}"></i><i class="b" style="flex:${p.games_started ? abandoned : 1}"></i></div>
+      <div class="sub"><b>${fmt(p.games_finished)}</b> доиграно${p.games_started ? ` (${done}%)` : ''} · <b>${fmt(abandoned)}</b> брошено</div>`),
+    html('kpi', `<div class="label">Заходы на сайт</div><div class="value">${fmt(p.visits)}</div>
+      <div class="sub">${p.visitors ? `<b>${(p.visits / p.visitors).toLocaleString('ru-RU', { maximumFractionDigits: 1 })}</b> на человека` : 'пока никого'}</div>`),
+    html('kpi', `<div class="label">Клипы</div><div class="value">${fmt(p.clips)}</div>
+      <div class="sub">${p.games_finished ? `<b>${pctN(p.clips, p.games_finished)}%</b> от доигранных` : 'для TikTok и Reels'}</div>`),
   );
-  fillTable($<HTMLTableElement>('sources'), ['Источник', 'Заходов'], s.sources.map((x) => [x.source, fmt(x.visits)]), [1]);
-  fillTable($<HTMLTableElement>('devices'), ['Устройство', 'Посетителей'], s.devices.map((x) => [x.device, fmt(x.visitors)]), [1]);
-  fillTable($<HTMLTableElement>('modes'), ['Режим', 'Партий'], Object.entries(s.modes).map(([m, n]) => [MODE_NAME[m] ?? m, fmt(n)]), [1]);
+}
+
+const METRIC_TEXT: Record<string, [string, [string, string, string]]> = {
+  visitors: ['Посетители по дням', ['посетитель', 'посетителя', 'посетителей']],
+  started: ['Начатые партии по дням', ['партия', 'партии', 'партий']],
+  finished: ['Доигранные партии по дням', ['партия', 'партии', 'партий']],
+};
+
+function renderChart(): void {
+  if (!summary) return;
+  markSeg('metric', 'm', metric);
+  const days = summary.days;
+  const [title, forms] = METRIC_TEXT[metric];
+  $('chart-title').textContent = title;
+  const box = $('chart');
+  const W = Math.max(280, box.clientWidth || 320), H = box.clientHeight || 170;
+  const padL = 26, padB = 20, padT = 6;
+  const vals = days.map((d) => d[metric]);
+  const rawMax = Math.max(...vals, 0);
+  const step = rawMax <= 4 ? 1 : rawMax <= 10 ? 2 : Math.pow(10, Math.floor(Math.log10(rawMax))) * (rawMax / Math.pow(10, Math.floor(Math.log10(rawMax))) > 5 ? 2 : 1);
+  const max = Math.max(step * 2, Math.ceil(rawMax / step) * step);
+  const plotW = W - padL, plotH = H - padB - padT;
+  const slot = plotW / days.length;
+  const bw = Math.max(3, Math.min(18, slot - 3));
+  const y = (v: number) => padT + plotH - (v / max) * plotH;
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  const add = (tag: string, attrs: Record<string, string | number>, text?: string) => {
+    const n = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+    if (text != null) n.textContent = text;
+    svg.append(n);
+    return n;
+  };
+  for (const v of [0, max / 2, max]) {
+    add('line', { class: 'grid', x1: padL, x2: W, y1: y(v), y2: y(v) });
+    add('text', { class: 'ax', x: 0, y: y(v) + 4 }, fmt(v));
+  }
+  if (selDay < 0 || selDay >= days.length) selDay = days.length - 1;
+  days.forEach((d, i) => {
+    const x = padL + i * slot + (slot - bw) / 2;
+    const v = d[metric];
+    if (v > 0) {
+      const h = Math.max(2, (v / max) * plotH);
+      // округлён только верх, низ стоит на оси
+      const r = Math.min(4, bw / 2, h);
+      const top = y(v), bot = padT + plotH;
+      add('path', {
+        class: '', fill: i === selDay ? '#6aabf1' : 'var(--s1)',
+        d: `M${x},${bot}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${bot}Z`,
+      });
+    }
+    const date = new Date(`${d.day}T12:00:00`);
+    if (i % 7 === (days.length - 1) % 7)
+      add('text', { class: 'ax', x: padL + i * slot + slot / 2, y: H - 4, 'text-anchor': 'middle' },
+        date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', ''));
+    const hit = add('rect', { class: 'hit', x: padL + i * slot, y: 0, width: slot, height: H - padB });
+    const pick = () => {
+      selDay = i;
+      renderChart();
+    };
+    hit.addEventListener('click', pick);
+    hit.addEventListener('mouseenter', pick);
+  });
+  box.replaceChildren(svg);
+  const d = days[selDay];
+  if (d) {
+    const v = d[metric];
+    const date = new Date(`${d.day}T12:00:00`).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
+    $('chart-tip').innerHTML = `${esc(date)}: <b>${fmt(v)}</b> ${plural(v, forms)}`;
+  }
+}
+
+function hbars(id: string, rows: [string, number][], unit: [string, string, string]): void {
+  const box = $(id);
+  box.replaceChildren();
+  if (!rows.length) return void box.append(el('div', 'empty', 'Пока нет данных'));
+  const max = Math.max(...rows.map((r) => r[1]), 1);
+  const total = rows.reduce((a, r) => a + r[1], 0);
+  for (const [name, v] of rows)
+    box.append(html('hbar', `<span class="t">${esc(name)}</span><span class="v"><b>${fmt(v)}</b> · ${pctN(v, total)}%</span>
+      <span class="track"><i style="width:${(v / max) * 100}%"></i></span>`));
+  box.title = unit[2];
+}
+
+function renderSummary(): void {
+  if (!summary) return;
+  const s = summary;
+  renderKpis();
+  renderChart();
+
+  const bots = $('bots');
+  bots.replaceChildren();
+  const list = [...s.bots].sort((a, b) => BOT_ORDER.indexOf(a.bot_id) - BOT_ORDER.indexOf(b.bot_id));
+  if (!list.length) bots.append(el('div', 'empty', 'С ботами ещё никто не играл'));
+  for (const b of list) {
+    const f = b.finished;
+    const meta = f
+      ? `бот побеждает в ${pctN(b.bot_wins, f)}%` + (b.avg_accuracy != null ? ` · средняя точность игрока ${b.avg_accuracy}%` : '')
+      : 'ещё никто не доиграл';
+    bots.append(html('bot', `
+      <div class="av">${BOT_EMOJI[b.bot_id] ?? '♟️'}</div>
+      <div class="name">${esc(b.bot_name ?? b.bot_id)}</div>
+      <div class="num"><b>${fmt(b.started)}</b> ${plural(b.started, ['партия', 'партии', 'партий'])}${b.started !== f ? ` · ${fmt(f)} доиграно` : ''}</div>
+      <div class="stack" title="игрок ${b.player_wins} · ничьи ${b.draws} · бот ${b.bot_wins}">
+        ${b.player_wins ? `<i class="w" style="flex:${b.player_wins}"></i>` : ''}${b.draws ? `<i class="d" style="flex:${b.draws}"></i>` : ''}${b.bot_wins ? `<i class="l" style="flex:${b.bot_wins}"></i>` : ''}
+      </div>
+      <div class="meta">${f ? `${b.player_wins} : ${b.draws} : ${b.bot_wins} · ` : ''}${esc(meta)}</div>`));
+  }
+
+  hbars('sources', s.sources.map((x) => [SOURCE_NAME[x.source] ?? x.source, x.visits]), ['заход', 'захода', 'заходов']);
+  hbars('devices', s.devices.map((x) => [x.device === 'телефон' ? '📱 Телефон' : x.device === 'компьютер' ? '💻 Компьютер' : x.device, x.visitors]), ['человек', 'человека', 'человек']);
+  hbars('modes', Object.entries(s.modes).map(([m, n]) => [MODE_NAME[m] ?? m, n] as [string, number]).sort((a, b) => b[1] - a[1]), ['партия', 'партии', 'партий']);
 
   const botSel = $<HTMLSelectElement>('f-bot');
   const cur = botSel.value;
-  botSel.replaceChildren(new Option('все боты', ''));
-  for (const b of s.bots) botSel.add(new Option(`${BOT_EMOJI[b.bot_id] ?? ''} ${b.bot_name ?? b.bot_id}`, b.bot_id));
+  botSel.replaceChildren(new Option('Все боты', ''));
+  for (const b of list) botSel.add(new Option(`${BOT_EMOJI[b.bot_id] ?? ''} ${b.bot_name ?? b.bot_id}`, b.bot_id));
   botSel.value = cur;
 }
 
-// ---------- таблица партий ----------
+// ---------- партии ----------
 
 interface GameRow {
   id: string; ts: string; visitor_id: string; mode: string; bot_id: string | null; bot_name: string | null;
@@ -223,15 +315,19 @@ interface GameRow {
 
 let page = 0;
 
-const RESULT: Record<string, [string, string]> = {
-  win: ['Игрок', 'win'], loss: ['Бот', 'loss'], draw: ['Ничья', 'draw'], white: ['Белые', 'win'], black: ['Чёрные', 'win'],
-};
-const HOW: Record<string, string> = { mate: 'мат', time: 'время', resign: 'сдача', draw: 'ничья', other: '—' };
+const HOW: Record<string, string> = { mate: 'мат', time: 'по времени', resign: 'сдача', draw: 'ничья', other: '' };
 
 function dur(s: number | null): string {
-  if (s == null) return '—';
-  const m = Math.floor(s / 60);
-  return m >= 60 ? `${Math.floor(m / 60)} ч ${m % 60} мин` : m ? `${m} мин ${s % 60} с` : `${s} с`;
+  if (s == null) return '';
+  const m = Math.round(s / 60);
+  return s < 60 ? `${s} с` : m >= 60 ? `${Math.floor(m / 60)} ч ${m % 60} мин` : `${m} мин`;
+}
+
+function setPlayer(v: string): void {
+  $<HTMLInputElement>('f-player').value = v;
+  $('f-player-clear').classList.toggle('hidden', !v);
+  page = 0;
+  void loadGames().catch(fail);
 }
 
 async function loadGames(): Promise<void> {
@@ -239,6 +335,7 @@ async function loadGames(): Promise<void> {
   const mode = $<HTMLSelectElement>('f-mode').value;
   const bot = $<HTMLSelectElement>('f-bot').value;
   const player = $<HTMLInputElement>('f-player').value.trim().toLowerCase();
+  $('f-player-clear').classList.toggle('hidden', !player);
   if (mode) q.append('mode', `eq.${mode}`);
   if (bot) q.append('bot_id', `eq.${bot}`);
   if (/^[0-9a-f-]{36}$/.test(player)) q.append('visitor_id', `eq.${player}`);
@@ -252,44 +349,40 @@ async function loadGames(): Promise<void> {
   const rows = (await res.json().catch(() => [])) as GameRow[];
   if (!res.ok) throw new Error((rows as unknown as { message?: string }).message ?? res.statusText);
   const total = Number(res.headers.get('content-range')?.split('/')[1] ?? rows.length);
-  $('games-count').textContent = `всего ${fmt(total)}`;
-  $('page').textContent = total ? `${page * PAGE + 1}–${page * PAGE + rows.length}` : '';
+  $('games-count').textContent = `${fmt(total)} ${plural(total, ['партия', 'партии', 'партий'])}`;
+  $('page').textContent = total > PAGE ? `${page * PAGE + 1}–${page * PAGE + rows.length} из ${fmt(total)}` : '';
   $<HTMLButtonElement>('prev').disabled = page === 0;
   $<HTMLButtonElement>('next').disabled = (page + 1) * PAGE >= total;
+  $('prev').parentElement!.classList.toggle('hidden', total <= PAGE);
 
-  fillTable(
-    $<HTMLTableElement>('games'),
-    ['Дата', 'Игрок', 'Соперник', 'Цвет', 'Победил', 'Чем кончилось', 'Ходов', 'Точность', 'Зевки', 'Ошибки', 'Часы', 'Длилась', 'Дебют'],
-    rows.map((g) => {
-      const pl = el('td', g.visitor_id.slice(0, 6), 'pl');
-      pl.title = `${g.visitor_id}\nнажмите — показать только его партии`;
-      pl.onclick = () => {
-        $<HTMLInputElement>('f-player').value = g.visitor_id;
-        page = 0;
-        void loadGames().catch(fail);
-      };
-      const [rt, rc] = RESULT[g.result] ?? [g.result, ''];
-      const res = el('td', rt, rc);
-      res.title = g.reason ?? '';
-      const opp = g.mode === 'bot' ? `${BOT_EMOJI[g.bot_id ?? ''] ?? ''} ${g.bot_name ?? g.bot_id}` : MODE_NAME[g.mode] ?? g.mode;
-      return [
-        new Date(g.ts).toLocaleString('ru-RU', { timeZone: TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
-        pl,
-        opp + (g.chess960 ? ' · 960' : ''),
-        g.color === 'white' ? '⚪' : g.color === 'black' ? '⚫' : '—',
-        res,
-        HOW[g.how ?? 'other'] ?? g.how,
-        g.plies == null ? '—' : Math.ceil(g.plies / 2),
-        g.accuracy == null ? '—' : `${g.accuracy}%`,
-        g.mode === 'bot' ? g.blunders : '—',
-        g.mode === 'bot' ? g.mistakes : '—',
-        g.time_control,
-        dur(g.duration_s),
-        g.opening,
-      ];
-    }),
-    [6, 7, 8, 9],
-  );
+  const box = $('games');
+  box.replaceChildren();
+  if (!rows.length) box.append(el('div', 'empty', player || mode || bot ? 'Ничего не нашлось' : 'Пока ни одной доигранной партии'));
+  for (const g of rows) {
+    const isBot = g.mode === 'bot';
+    const [badge, cls] =
+      g.result === 'win' ? ['Победа игрока', 'win']
+      : g.result === 'loss' ? ['Победа бота', 'loss']
+      : g.result === 'draw' ? ['Ничья', 'draw']
+      : [g.result === 'white' ? 'Белые победили' : 'Чёрные победили', 'win'];
+    const moves = g.plies == null ? null : Math.ceil(g.plies / 2);
+    const parts = [
+      HOW[g.how ?? 'other'],
+      moves == null ? '' : `${moves} ${plural(moves, ['ход', 'хода', 'ходов'])}`,
+      g.accuracy == null ? '' : `точность <b>${g.accuracy}%</b>`,
+      isBot && g.blunders ? `${g.blunders} ${plural(g.blunders, ['зевок', 'зевка', 'зевков'])}` : '',
+    ].filter(Boolean);
+    const when = new Date(g.ts).toLocaleString('ru-RU', { timeZone: TZ, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace('.', '');
+    const card = html('game', `
+      <div class="av">${isBot ? BOT_EMOJI[g.bot_id ?? ''] ?? '♟️' : '👥'}</div>
+      <div class="opp">${isBot ? esc(g.bot_name ?? g.bot_id) : 'Два игрока'}${g.chess960 ? ' <small>· 960</small>' : ''}${isBot && g.color ? ` <small>· ${g.color === 'white' ? 'за белых' : 'за чёрных'}</small>` : ''}</div>
+      <span class="badge ${cls}" title="${esc(g.reason)}">${badge}</span>
+      <div class="line">${parts.map((x) => `<span>${x}</span>`).join(' · ')}</div>
+      <div class="line"><button class="chip" title="${esc(g.visitor_id)}">${esc(g.visitor_id.slice(0, 6))}</button> · <span>${esc(when)}</span>${g.duration_s != null ? ` · <span>${dur(g.duration_s)}</span>` : ''}${g.time_control && g.time_control !== 'Без часов' ? ` · <span>⏱ ${esc(g.time_control.replace(/\s*\(.*\)/, '').replace(/ \+ /, '+'))}</span>` : ''}</div>`);
+    card.querySelector<HTMLButtonElement>('.chip')!.onclick = () => setPlayer(g.visitor_id);
+    if (g.opening) card.title = g.opening;
+    box.append(card);
+  }
 }
 
 // ---------- запуск ----------
@@ -310,9 +403,9 @@ async function enter(): Promise<void> {
     showOnly('not-admin');
     const box = $('not-admin');
     box.replaceChildren(
-      el('h2', 'Вход выполнен, но этот пользователь пока не админ'),
-      el('p', 'Откройте Supabase → SQL Editor, вставьте строку ниже и нажмите Run. Потом обновите эту страницу.'),
-      el('code', `insert into public.cc_admins (user_id) values ('${session.user.id}');`),
+      el('h2', undefined, 'Вход выполнен, но этот пользователь пока не админ'),
+      el('p', undefined, 'Откройте Supabase → SQL Editor, вставьте строку ниже и нажмите Run. Потом обновите эту страницу.'),
+      el('code', undefined, `insert into public.cc_admins (user_id) values ('${session.user.id}');`),
     );
     return;
   }
@@ -323,11 +416,15 @@ async function enter(): Promise<void> {
 async function refresh(): Promise<void> {
   const btn = $<HTMLButtonElement>('refresh');
   btn.disabled = true;
+  btn.classList.add('spin');
   try {
-    renderSummary(await rpc<Summary>('cc_summary', { tz: TZ }));
+    summary = await rpc<Summary>('cc_summary', { tz: TZ });
+    selDay = -1;
+    renderSummary();
     await loadGames();
   } finally {
     btn.disabled = false;
+    btn.classList.remove('spin');
   }
 }
 
@@ -358,6 +455,24 @@ $('next').onclick = () => {
   void loadGames().catch(fail);
 };
 for (const id of ['f-mode', 'f-bot']) $(id).onchange = () => ((page = 0), void loadGames().catch(fail));
-$('f-player').onchange = () => ((page = 0), void loadGames().catch(fail));
+$('f-player').onchange = () => setPlayer($<HTMLInputElement>('f-player').value.trim());
+$('f-player-clear').onclick = () => setPlayer('');
+for (const b of $('period').querySelectorAll<HTMLButtonElement>('button'))
+  b.onclick = () => {
+    period = b.dataset.p as PeriodKey;
+    pref('period', period);
+    renderKpis();
+  };
+for (const b of $('metric').querySelectorAll<HTMLButtonElement>('button'))
+  b.onclick = () => {
+    metric = b.dataset.m as typeof metric;
+    pref('metric', metric);
+    renderChart();
+  };
+let resizeT = 0;
+addEventListener('resize', () => {
+  clearTimeout(resizeT);
+  resizeT = window.setTimeout(renderChart, 150);
+});
 
 void enter().catch(fail);
