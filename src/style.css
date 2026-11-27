@@ -318,3 +318,21 @@ a.button.primary { background: var(--accent); border-color: var(--accent); color
 .name-card button.link { background: none; border: 0; color: var(--muted); font-size: 14px; padding: 8px; }
 .name-card button.link:hover { color: var(--text); background: none; }
 #open-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Координаты на доске: буквы — в правом нижнем углу клеток нижнего ряда, цифры — в левом верхнем
+   углу клеток левого столбца. Стандартные отступы chessground сдвигали буквы на полклетки. */
+.cg-wrap coords { font-size: clamp(9px, 2.4vw, 12px); font-weight: 600; opacity: 0.9; }
+.cg-wrap coords.files { left: 0; right: 0; bottom: 0; width: auto; height: auto; text-transform: none; text-align: right; }
+.cg-wrap coords.files coord { flex: 1 1 0; padding: 0 3px 1px 0; line-height: 1.2; }
+.cg-wrap coords.ranks { left: 0; top: 0; width: auto; height: 100%; }
+.cg-wrap coords.ranks coord { flex: 1 1 0; transform: none; padding: 2px 0 0 3px; line-height: 1.2; }
+
+@media (max-width: 900px) {
+  /* Пока ходов нет, пустой список не оставляет дыру под чатом. */
+  .moves:empty { display: none; }
+}
+/* Цвет координаты — контрастный к своей клетке (a1 — тёмная клетка). */
+.cg-wrap coords.files:not(.black) coord:nth-child(odd), .cg-wrap coords.files.black coord:nth-child(even),
+.cg-wrap coords.ranks:not(.black) coord:nth-child(odd), .cg-wrap coords.ranks.black coord:nth-child(even) { color: rgba(255, 255, 255, 0.9); }
+.cg-wrap coords.files:not(.black) coord:nth-child(even), .cg-wrap coords.files.black coord:nth-child(odd),
+.cg-wrap coords.ranks:not(.black) coord:nth-child(even), .cg-wrap coords.ranks.black coord:nth-child(odd) { color: rgba(70, 50, 30, 0.85); }
